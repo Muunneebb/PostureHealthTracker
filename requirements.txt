@@ -1,0 +1,11 @@
+Adafruit-Blinka
+adafruit-circuitpython-mpu6050
+adafruit-circuitpython-ads1x15
+adafruit-circuitpython-ssd1306
+Pillow
+numpy
+opencv-python
+max30102
+RPi.GPIO
+picamera2
+mediapipe
