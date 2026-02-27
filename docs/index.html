@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostureHealthTracker - GitHub Pages Edition</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
+</head>
+<body>
+    <!-- Login/Register Page -->
+    <div id="authPage" class="page">
+        <div class="auth-container">
+            <div class="auth-form">
+                <h1>PostureHealthTracker</h1>
+                <p class="subtitle">Monitor Your Posture Health</p>
+                
+                <div id="loginForm" class="form-section">
+                    <h2>Login</h2>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="loginEmail" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" placeholder="Password">
+                    </div>
+                    <button onclick="login()" class="btn btn-primary">Sign In</button>
+                    <p class="toggle-form">Don't have an account? <a onclick="toggleForm()">Register</a></p>
+                    <div id="loginError" class="error-message"></div>
+                </div>
+
+                <div id="registerForm" class="form-section" style="display:none;">
+                    <h2>Create Account</h2>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="registerEmail" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="registerPassword" placeholder="Min 6 characters">
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="registerUsername" placeholder="Display name">
+                    </div>
+                    <button onclick="register()" class="btn btn-primary">Create Account</button>
+                    <p class="toggle-form">Already have an account? <a onclick="toggleForm()">Login</a></p>
+                    <div id="registerError" class="error-message"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Page -->
+    <div id="dashboardPage" class="page" style="display:none;">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">PostureHealthTracker</div>
+                <div class="nav-menu">
+                    <span id="userDisplayName"></span>
+                    <button onclick="logout()" class="btn btn-small">Logout</button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container">
+            <div class="dashboard-header">
+                <h2>Dashboard</h2>
+                <button onclick="startNewSession()" class="btn btn-primary">Start Session</button>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Sessions</h3>
+                    <p class="stat-value" id="statTotalSessions">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Avg Score (2 Weeks)</h3>
+                    <p class="stat-value" id="statAvgScore">0%</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Sitting Time</h3>
+                    <p class="stat-value" id="statTotalSitting">0h</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Community Avg Score</h3>
+                    <p class="stat-value" id="statCommunityAvg">0%</p>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('myData')">My Sessions</button>
+                <button class="tab-btn" onclick="switchTab('analytics')">2-Week Analytics</button>
+                <button class="tab-btn" onclick="switchTab('community')">Community Leaderboard</button>
+            </div>
+
+            <!-- My Data Tab -->
+            <div id="myDataTab" class="tab-content active">
+                <div class="sessions-container">
+                    <h3>Your Recent Sessions</h3>
+                    <div id="sessionsList" class="sessions-list">
+                        <p class="no-data">No sessions yet. Start tracking!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Tab -->
+            <div id="analyticsTab" class="tab-content" style="display:none;">
+                <div class="analytics-container">
+                    <h3>2-Week Performance Analytics</h3>
+                    <canvas id="analyticsChart"></canvas>
+                    <div class="analytics-stats">
+                        <div class="stat-row">
+                            <span>Best Session Score:</span>
+                            <span id="bestScore">-</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Worst Session Score:</span>
+                            <span id="worstScore">-</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Average Score:</span>
+                            <span id="periodAvgScore">-</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Sessions in Period:</span>
+                            <span id="periodSessionCount">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Community Tab -->
+            <div id="communityTab" class="tab-content" style="display:none;">
+                <div class="leaderboard-container">
+                    <h3>Community Leaderboard (Last 2 Weeks)</h3>
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>User</th>
+                                <th>Avg Score</th>
+                                <th>Sessions</th>
+                                <th>Total Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody">
+                            <tr><td colspan="5" class="no-data">Loading leaderboard...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Detail Modal -->
+    <div id="sessionModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeSessionModal()">&times;</span>
+            <h2 id="sessionModalTitle">Session Details</h2>
+            <div id="sessionModalBody"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
