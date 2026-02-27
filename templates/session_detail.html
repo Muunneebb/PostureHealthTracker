@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Session Details - PostureHealthTracker{% endblock %}
+
+{% block content %}
+<div class="session-detail">
+    <div class="session-header">
+        <h2>Session Details</h2>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+
+    <div class="session-overview">
+        <div class="overview-card">
+            <h3>Duration</h3>
+            <p class="value">{{ (session.duration / 60) | round(0) | int }} minutes</p>
+        </div>
+        <div class="overview-card">
+            <h3>Sitting Time</h3>
+            <p class="value">{{ (session.sitting_duration / 60) | round(0) | int if session.sitting_duration else 0 }} minutes</p>
+        </div>
+        <div class="overview-card">
+            <h3>Sitting Percentage</h3>
+            <p class="value">{{ (session.sitting_percentage) | round(0) | int }}%</p>
+        </div>
+        <div class="overview-card">
+            <h3>Session Score</h3>
+            {% if session.session_score >= 0.7 %}
+            <p class="value score-color-good">
+                {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+            </p>
+            {% elif session.session_score >= 0.4 %}
+            <p class="value score-color-medium">
+                {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+            </p>
+            {% else %}
+            <p class="value score-color-poor">
+                {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+            </p>
+            {% endif %}
+        </div>
+        <div class="overview-card">
+            <h3>Buzzer Count</h3>
+            <p class="value">{{ session.buzzer_count }}</p>
+        </div>
+    </div>
+
+    <div class="alerts-section">
+        <h3>Alerts</h3>
+        <div class="alerts-list">
+            {% if session.break_alert %}
+            <div class="alert-item break-alert">
+                <span class="alert-icon">⚠️</span>
+                <span class="alert-text">Break alert triggered - You sat for over 2 hours</span>
+            </div>
+            {% endif %}
+            {% if session.excessive_buzzer_alert %}
+            <div class="alert-item buzzer-alert">
+                <span class="alert-icon">🔔</span>
+                <span class="alert-text">Excessive buzzer alert - Buzzer triggered 5 times</span>
+            </div>
+            {% endif %}
+            {% if not session.break_alert and not session.excessive_buzzer_alert %}
+            <p class="no-alerts">No alerts triggered during this session</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="readings-section">
+        <h3>Sensor Readings ({{ session.readings | length }} readings)</h3>
+        <canvas id="stressChart"></canvas>
+        <canvas id="positionChart"></canvas>
+        
+        <table class="readings-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Pitch</th>
+                    <th>Roll</th>
+                    <th>Sitting</th>
+                    <th>Stress Score</th>
+                    <th>Buzzer</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reading in session.readings %}
+                <tr>
+                    <td>{{ reading.timestamp }}</td>
+                    <td>{{ reading.pitch | round(1) if reading.pitch else '-' }}°</td>
+                    <td>{{ reading.roll | round(1) if reading.roll else '-' }}°</td>
+                    <td>{% if reading.is_seated %}<span class="badge-yes">Yes</span>{% else %}<span class="badge-no">No</span>{% endif %}</td>
+                    <td>{{ (reading.stress_score * 100) | round(0) | int if reading.stress_score else '-' }}%</td>
+                    <td>{% if reading.buzzer_triggered %}<span class="badge-yes">Yes</span>{% else %}<span class="badge-no">No</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="sessionDataContainer" data-session="{{ session | tojson | safe }}"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const sessionData = JSON.parse(document.getElementById('sessionDataContainer').getAttribute('data-session'));
+
+// Stress Score Chart
+const stressCtx = document.getElementById('stressChart').getContext('2d');
+const stressChart = new Chart(stressCtx, {
+    type: 'line',
+    data: {
+        labels: sessionData.readings.map(r => new Date(r.timestamp).toLocaleTimeString()),
+        datasets: [{
+            label: 'Stress Score',
+            data: sessionData.readings.map(r => (r.stress_score * 100).toFixed(0)),
+            borderColor: '#FF9800',
+            backgroundColor: 'rgba(255, 152, 0, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            title: {
+                display: true,
+                text: 'Stress Score over Time'
+            }
+        },
+        scales: {
+            y: {
+                min: 0,
+                max: 100,
+                title: {
+                    display: true,
+                    text: 'Stress Score (%)'
+                }
+            }
+        }
+    }
+});
+
+// Position Chart
+const posCtx = document.getElementById('positionChart').getContext('2d');
+const posChart = new Chart(posCtx, {
+    type: 'line',
+    data: {
+        labels: sessionData.readings.map(r => new Date(r.timestamp).toLocaleTimeString()),
+        datasets: [
+            {
+                label: 'Pitch (°)',
+                data: sessionData.readings.map(r => r.pitch || 0),
+                borderColor: '#2196F3',
+                backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                tension: 0.4,
+                fill: true
+            },
+            {
+                label: 'Roll (°)',
+                data: sessionData.readings.map(r => r.roll || 0),
+                borderColor: '#4CAF50',
+                backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                tension: 0.4,
+                fill: true
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            title: {
+                display: true,
+                text: 'Body Position (Pitch & Roll) over Time'
+            }
+        },
+        scales: {
+            y: {
+                title: {
+                    display: true,
+                    text: 'Angle (degrees)'
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

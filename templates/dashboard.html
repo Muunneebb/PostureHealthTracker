@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - PostureHealthTracker{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="dashboard-header">
+        <h2>Your Dashboard</h2>
+        <button id="startSessionBtn" class="btn btn-primary">Start New Session</button>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Total Sessions</h3>
+            <p class="stat-value">{{ stats.total_sessions }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Total Sitting Time</h3>
+            <p class="stat-value">{{ (stats.total_sitting_time / 3600) | round(1) }} hrs</p>
+        </div>
+        <div class="stat-card">
+            <h3>Avg Session Score</h3>
+            <p class="stat-value">{{ (stats.avg_session_score * 100) | round(0) | int }}%</p>
+        </div>
+        <div class="stat-card">
+            <h3>Break Alerts</h3>
+            <p class="stat-value alert-number">{{ stats.break_alerts }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Buzzer Alerts</h3>
+            <p class="stat-value alert-number">{{ stats.buzzer_alerts }}</p>
+        </div>
+    </div>
+
+    <div class="sessions-container">
+        <h3>Recent Sessions</h3>
+        {% if sessions %}
+        <table class="sessions-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Duration</th>
+                    <th>Sitting Time</th>
+                    <th>Session Score</th>
+                    <th>Buzzer Count</th>
+                    <th>Alerts</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions %}
+                <tr>
+                    <td>{{ session.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ (session.get_duration() / 60) | round(0) | int }} min</td>
+                    <td>{{ (session.sitting_duration / 60) | round(0) | int if session.sitting_duration else 0 }} min</td>
+                    <td>
+                        {% if session.session_score >= 0.7 %}
+                        <span class="score-badge score-good">
+                            {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+                        </span>
+                        {% elif session.session_score >= 0.4 %}
+                        <span class="score-badge score-medium">
+                            {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+                        </span>
+                        {% else %}
+                        <span class="score-badge score-poor">
+                            {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>{{ session.buzzer_count or 0 }}</td>
+                    <td>
+                        {% if session.break_alert_triggered %}
+                        <span class="alert-badge break-alert">Break</span>
+                        {% endif %}
+                        {% if session.excessive_buzzer_alert %}
+                        <span class="alert-badge buzzer-alert">Buzzer</span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('view_session', session_id=session.id) }}" class="btn btn-small">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">No sessions yet. Start your first session to track your posture health!</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.getElementById('startSessionBtn').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/api/start-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert('New session started! Session ID: ' + data.session_id);
+            // Store session ID in localStorage for monitoring
+            localStorage.setItem('currentSessionId', data.session_id);
+            window.location.reload();
+        }
+    } catch (error) {
+        alert('Error starting session: ' + error);
+    }
+});
+</script>
+{% endblock %}
