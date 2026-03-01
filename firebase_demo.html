@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Demo Data Generator</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f0f0f0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda !important;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da !important;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1 !important;
+            color: #0c5460;
+        }
+        input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            width: 300px;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Firebase Demo Data Generator</h1>
+        <p>Generate 2 weeks of realistic posture tracking sessions</p>
+        
+        <div class="form-group">
+            <label>Email (use your existing account):</label>
+            <input type="email" id="email" value="muneebasif204@gmail.com" placeholder="your@email.com">
+        </div>
+        
+        <div class="form-group">
+            <label>Password:</label>
+            <input type="password" id="password" value="" placeholder="Your password">
+        </div>
+        
+        <div class="form-group">
+            <label>Username:</label>
+            <input type="text" id="username" value="Muneeb" placeholder="Your username">
+        </div>
+        
+        <div class="form-group">
+            <label>Number of sessions to generate:</label>
+            <input type="number" id="sessionCount" value="20" min="1" max="50" placeholder="20">
+        </div>
+        
+        <button onclick="generateDemoData()" id="generateBtn">🚀 Generate Demo Data</button>
+        <button onclick="clearData()" id="clearBtn">🗑️ Clear My Data</button>
+        
+        <div id="status">Ready to generate demo data...</div>
+    </div>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDhVpz_D9OTfckaLA792N0c-bqmGnBd7G4",
+            authDomain: "posturehealthtracker.firebaseapp.com",
+            projectId: "posturehealthtracker",
+            storageBucket: "posturehealthtracker.firebasestorage.app",
+            messagingSenderId: "330967946233",
+            appId: "1:330967946233:web:995732d6b544e67a46e328",
+            measurementId: "G-5YG2GL2W9Z"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        function updateStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+        }
+
+        function randomBetween(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function randomInt(min, max) {
+            return Math.floor(randomBetween(min, max + 1));
+        }
+
+        async function generateDemoData() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const username = document.getElementById('username').value;
+            const sessionCount = parseInt(document.getElementById('sessionCount').value);
+
+            if (!email || !password || !username) {
+                updateStatus('Please fill in all fields!', 'error');
+                return;
+            }
+
+            const generateBtn = document.getElementById('generateBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            generateBtn.disabled = true;
+            clearBtn.disabled = true;
+
+            try {
+                updateStatus('🔐 Logging in...', 'info');
+                
+                // Sign in with existing account
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                updateStatus(`✅ Logged in as ${email}`, 'success');
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Generate sessions spread over 2 weeks
+                updateStatus(`📊 Generating ${sessionCount} sessions over 2 weeks...`, 'info');
+                
+                const now = new Date();
+                const twoWeeksAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000));
+                
+                for (let i = 0; i < sessionCount; i++) {
+                    // Random timestamp between 2 weeks ago and now
+                    const randomTimestamp = new Date(
+                        twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime())
+                    );
+                    
+                    // Random session duration (15-90 minutes)
+                    const durationSeconds = randomInt(15 * 60, 90 * 60);
+                    const startTime = new Date(randomTimestamp);
+                    const endTime = new Date(startTime.getTime() + durationSeconds * 1000);
+                    
+                    // Generate session characteristics
+                    const sessionQuality = Math.random(); // 0 = bad, 1 = good
+                    const buzzerActivations = sessionQuality < 0.3 ? randomInt(3, 8) : 
+                                             sessionQuality < 0.6 ? randomInt(1, 3) : 
+                                             randomInt(0, 1);
+                    
+                    // Calculate stress score (0-100, lower is better)
+                    const baseScore = sessionQuality * 100;
+                    const stressScore = Math.max(0, Math.min(100, 
+                        100 - baseScore + randomBetween(-10, 10)
+                    ));
+                    
+                    // Create session
+                    const sessionRef = await db.collection('sessions').add({
+                        userId: user.uid,
+                        username: username,
+                        startTime: firebase.firestore.Timestamp.fromDate(startTime),
+                        endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                        duration: durationSeconds,
+                        buzzerCount: buzzerActivations,
+                        stressScore: Math.round(stressScore),
+                        createdAt: firebase.firestore.Timestamp.fromDate(startTime)
+                    });
+                    
+                    // Generate readings for this session (1 reading per minute)
+                    const readingCount = Math.floor(durationSeconds / 60);
+                    const readingsPerBatch = 10;
+                    
+                    for (let j = 0; j < readingCount; j += readingsPerBatch) {
+                        const batch = db.batch();
+                        const batchEnd = Math.min(j + readingsPerBatch, readingCount);
+                        
+                        for (let k = j; k < batchEnd; k++) {
+                            const readingTime = new Date(startTime.getTime() + k * 60 * 1000);
+                            
+                            // Simulate posture drift over time
+                            const timeFactor = k / readingCount;
+                            const fatigueEffect = sessionQuality < 0.6 ? timeFactor * 15 : timeFactor * 5;
+                            
+                            const reading = {
+                                timestamp: firebase.firestore.Timestamp.fromDate(readingTime),
+                                pitch: randomBetween(-15 + fatigueEffect, -5 + fatigueEffect),
+                                roll: randomBetween(-5, 5),
+                                distance: randomBetween(25, 45),
+                                fsr: randomBetween(200, 800),
+                                buzzer: Math.random() < (buzzerActivations / readingCount) ? 1 : 0
+                            };
+                            
+                            const readingRef = db.collection('sessions').doc(sessionRef.id).collection('readings').doc();
+                            batch.set(readingRef, reading);
+                        }
+                        
+                        await batch.commit();
+                    }
+                    
+                    updateStatus(
+                        `✅ Generated session ${i + 1}/${sessionCount}\n` +
+                        `   📅 ${startTime.toLocaleDateString()} ${startTime.toLocaleTimeString()}\n` +
+                        `   ⏱️ Duration: ${Math.floor(durationSeconds / 60)} minutes\n` +
+                        `   📊 Score: ${Math.round(stressScore)}/100\n` +
+                        `   🔔 Buzzer: ${buzzerActivations} times\n` +
+                        `   📈 Readings: ${readingCount}`,
+                        'success'
+                    );
+                    
+                    // Small delay to avoid overwhelming Firebase
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                updateStatus(
+                    `🎉 SUCCESS! Generated ${sessionCount} sessions!\n\n` +
+                    `📊 Now go to your app to see:\n` +
+                    `   • My Sessions tab - All ${sessionCount} sessions\n` +
+                    `   • 2-Week Analytics - Charts and statistics\n` +
+                    `   • Community Leaderboard - Your ranking\n\n` +
+                    `🔗 Visit: https://muunneebb.github.io/PostureHealthTracker/\n` +
+                    `📧 Login with: ${email}`,
+                    'success'
+                );
+                
+            } catch (error) {
+                console.error('Error:', error);
+                updateStatus(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                generateBtn.disabled = false;
+                clearBtn.disabled = false;
+            }
+        }
+
+        async function clearData() {
+            if (!confirm('⚠️ This will delete ALL your sessions and readings. Continue?')) {
+                return;
+            }
+
+            const clearBtn = document.getElementById('clearBtn');
+            const generateBtn = document.getElementById('generateBtn');
+            clearBtn.disabled = true;
+            generateBtn.disabled = true;
+
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    updateStatus('❌ Please generate data first (need to be logged in)', 'error');
+                    return;
+                }
+
+                updateStatus('🗑️ Deleting all sessions...', 'info');
+                
+                // Get all user sessions
+                const sessionsSnapshot = await db.collection('sessions')
+                    .where('userId', '==', user.uid)
+                    .get();
+                
+                let deletedCount = 0;
+                
+                for (const sessionDoc of sessionsSnapshot.docs) {
+                    // Delete all readings in this session
+                    const readingsSnapshot = await sessionDoc.ref.collection('readings').get();
+                    
+                    // Delete in batches
+                    const batchSize = 500;
+                    for (let i = 0; i < readingsSnapshot.docs.length; i += batchSize) {
+                        const batch = db.batch();
+                        const batchDocs = readingsSnapshot.docs.slice(i, i + batchSize);
+                        batchDocs.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                    
+                    // Delete session
+                    await sessionDoc.ref.delete();
+                    deletedCount++;
+                    
+                    updateStatus(`🗑️ Deleted ${deletedCount}/${sessionsSnapshot.docs.length} sessions...`, 'info');
+                }
+                
+                updateStatus(`✅ Deleted ${deletedCount} sessions successfully!`, 'success');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                updateStatus(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                clearBtn.disabled = false;
+                generateBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
