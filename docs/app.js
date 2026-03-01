@@ -358,10 +358,14 @@ async function loadLeaderboard() {
             const session = doc.data();
             
             if (!userStats[session.userId]) {
-                // Get user info
-                const userDoc = await db.collection('users').doc(session.userId).get();
+                // Use username from session or fetch from users collection
+                let username = session.username;
+                if (!username) {
+                    const userDoc = await db.collection('users').doc(session.userId).get();
+                    username = userDoc.exists ? userDoc.data().username : 'Anonymous';
+                }
                 userStats[session.userId] = {
-                    username: userDoc.data().username,
+                    username: username,
                     totalScore: 0,
                     sessionCount: 0,
                     totalTime: 0
