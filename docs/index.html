@@ -61,8 +61,17 @@
             <div class="nav-container">
                 <div class="nav-brand">PostureHealthTracker</div>
                 <div class="nav-menu">
-                    <span id="userDisplayName"></span>
-                    <button onclick="logout()" class="btn btn-small">Logout</button>
+                    <div class="user-menu">
+                        <button class="user-menu-btn" onclick="toggleUserMenu()">
+                            <span id="userDisplayName"></span>
+                            <span class="dropdown-arrow">▼</span>
+                        </button>
+                        <div class="user-dropdown" id="userDropdown">
+                            <a href="#" onclick="showChangePassword(); return false;">Change Password</a>
+                            <a href="#" onclick="logout(); return false;">Logout</a>
+                            <a href="#" onclick="showDeleteAccount(); return false;" class="text-danger">Delete Account</a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </nav>
@@ -165,6 +174,56 @@
             <span class="close-modal" onclick="closeSessionModal()">&times;</span>
             <h2 id="sessionModalTitle">Session Details</h2>
             <div id="sessionModalBody"></div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="modal" style="display:none;">
+        <div class="modal-content modal-small">
+            <span class="close-modal" onclick="closeChangePassword()">&times;</span>
+            <h2>Change Password</h2>
+            <div class="form-group">
+                <label>Current Password:</label>
+                <input type="password" id="currentPassword" placeholder="Enter current password">
+            </div>
+            <div class="form-group">
+                <label>New Password:</label>
+                <input type="password" id="newPassword" placeholder="Enter new password (min 6 characters)">
+            </div>
+            <div class="form-group">
+                <label>Confirm New Password:</label>
+                <input type="password" id="confirmNewPassword" placeholder="Confirm new password">
+            </div>
+            <div id="changePasswordError" class="error-message"></div>
+            <div id="changePasswordSuccess" class="success-message"></div>
+            <div class="modal-actions">
+                <button onclick="closeChangePassword()" class="btn btn-secondary">Cancel</button>
+                <button onclick="changePassword()" class="btn btn-primary">Update Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Account Modal -->
+    <div id="deleteAccountModal" class="modal" style="display:none;">
+        <div class="modal-content modal-small">
+            <span class="close-modal" onclick="closeDeleteAccount()">&times;</span>
+            <h2>Delete Account</h2>
+            <p class="warning-text">⚠️ This action cannot be undone. All your data will be permanently deleted.</p>
+            <div class="form-group">
+                <label>Enter your password to confirm:</label>
+                <input type="password" id="deleteAccountPassword" placeholder="Enter password">
+            </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="deleteAccountConfirm">
+                    I understand that this will permanently delete my account and all data
+                </label>
+            </div>
+            <div id="deleteAccountError" class="error-message"></div>
+            <div class="modal-actions">
+                <button onclick="closeDeleteAccount()" class="btn btn-secondary">Cancel</button>
+                <button onclick="deleteAccount()" class="btn btn-danger">Delete Account</button>
+            </div>
         </div>
     </div>
 
