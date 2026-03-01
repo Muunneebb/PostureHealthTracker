@@ -100,8 +100,8 @@
 
             <!-- Tabs -->
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('myData')">My Sessions</button>
-                <button class="tab-btn" onclick="switchTab('analytics')">2-Week Analytics</button>
+                <button class="tab-btn active" onclick="switchTab('myData', this)">My Sessions</button>
+                <button class="tab-btn" onclick="switchTab('analytics', this)">2-Week Analytics</button>
             </div>
 
             <!-- My Data Tab -->
@@ -115,7 +115,7 @@
             </div>
 
             <!-- Analytics Tab -->
-            <div id="analyticsTab" class="tab-content" style="display:none;">
+            <div id="analyticsTab" class="tab-content">
                 <div class="analytics-container">
                     <h3>2-Week Performance Analytics</h3>
                     <canvas id="analyticsChart"></canvas>

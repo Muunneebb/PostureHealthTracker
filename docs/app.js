@@ -121,18 +121,23 @@ function showDashboard() {
     });
 }
 
-function switchTab(tab) {
+function switchTab(tab, button) {
     // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(el => {
         el.classList.remove('active');
+        el.style.display = 'none';
     });
     document.querySelectorAll('.tab-btn').forEach(el => {
         el.classList.remove('active');
     });
 
     // Show selected tab
-    document.getElementById(tab + 'Tab').classList.add('active');
-    event.target.classList.add('active');
+    const selectedTab = document.getElementById(tab + 'Tab');
+    selectedTab.classList.add('active');
+    selectedTab.style.display = 'block';
+    if (button) {
+        button.classList.add('active');
+    }
 
     if (tab === 'analytics') {
         loadAnalytics();
