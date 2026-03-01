@@ -96,25 +96,20 @@
                     <h3>Total Sitting Time</h3>
                     <p class="stat-value" id="statTotalSitting">0h</p>
                 </div>
-                <div class="stat-card">
-                    <h3>Community Avg Score</h3>
-                    <p class="stat-value" id="statCommunityAvg">0%</p>
-                </div>
             </div>
 
             <!-- Tabs -->
             <div class="tabs">
                 <button class="tab-btn active" onclick="switchTab('myData')">My Sessions</button>
                 <button class="tab-btn" onclick="switchTab('analytics')">2-Week Analytics</button>
-                <button class="tab-btn" onclick="switchTab('community')">Community Leaderboard</button>
             </div>
 
             <!-- My Data Tab -->
             <div id="myDataTab" class="tab-content active">
                 <div class="sessions-container">
-                    <h3>Your Recent Sessions</h3>
-                    <div id="sessionsList" class="sessions-list">
-                        <p class="no-data">No sessions yet. Start tracking!</p>
+                    <h3>Current Session</h3>
+                    <div id="currentSessionList" class="sessions-list">
+                        <p class="no-data">No active session. Click Start Session to begin.</p>
                     </div>
                 </div>
             </div>
@@ -142,27 +137,13 @@
                             <span id="periodSessionCount">0</span>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Community Tab -->
-            <div id="communityTab" class="tab-content" style="display:none;">
-                <div class="leaderboard-container">
-                    <h3>Community Leaderboard (Last 2 Weeks)</h3>
-                    <table class="leaderboard-table">
-                        <thead>
-                            <tr>
-                                <th>Rank</th>
-                                <th>User</th>
-                                <th>Avg Score</th>
-                                <th>Sessions</th>
-                                <th>Total Time</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leaderboardBody">
-                            <tr><td colspan="5" class="no-data">Loading leaderboard...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="sessions-container">
+                        <h3>Previous Sessions (Last 2 Weeks)</h3>
+                        <div id="previousSessionsList" class="sessions-list">
+                            <p class="no-data">No previous sessions in the last 2 weeks.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

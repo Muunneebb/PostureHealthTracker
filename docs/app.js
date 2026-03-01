@@ -24,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUser = user;
             showDashboard();
             loadUserData();
-            loadLeaderboard();
         } else {
             showAuthPage();
         }
@@ -115,8 +114,9 @@ function showDashboard() {
     // Get user display name from Firestore
     db.collection('users').doc(currentUser.uid).get().then(doc => {
         if (doc.exists) {
-            document.getElementById('userDisplayName').textContent = 
-                'Hello, ' + doc.data().username;
+            document.getElementById('userDisplayName').textContent = doc.data().username;
+        } else {
+            document.getElementById('userDisplayName').textContent = currentUser.email.split('@')[0];
         }
     });
 }
@@ -215,11 +215,14 @@ async function loadUserData() {
         let totalSitting = 0;
         let totalScore = 0;
         let twoWeekSessions = [];
+        let activeSession = null;
         const twoWeeksAgo = new Date();
         twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-        const sessionsList = document.getElementById('sessionsList');
-        sessionsList.innerHTML = '';
+        const currentSessionList = document.getElementById('currentSessionList');
+        const previousSessionsList = document.getElementById('previousSessionsList');
+        currentSessionList.innerHTML = '';
+        previousSessionsList.innerHTML = '';
 
         sessionsSnapshot.forEach(doc => {
             const session = doc.data();
@@ -231,7 +234,16 @@ async function loadUserData() {
             totalSitting += session.sitDuration || 0;
             totalScore += session.sessionScore || 0;
 
-            if (startTime >= twoWeeksAgo) {
+            if (!session.endTime && !activeSession) {
+                activeSession = {
+                    ...session,
+                    id: doc.id,
+                    startTime: startTime,
+                    duration: duration
+                };
+            }
+
+            if (startTime >= twoWeeksAgo && session.endTime) {
                 twoWeekSessions.push({
                     ...session,
                     id: doc.id,
@@ -239,27 +251,55 @@ async function loadUserData() {
                     duration: duration
                 });
             }
+        });
 
-            // Create session card
-            const scoreClass = session.sessionScore >= 0.7 ? 'score-good' : 
-                              session.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
+        if (activeSession) {
+            const activeScoreClass = activeSession.sessionScore >= 0.7 ? 'score-good' : 
+                activeSession.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
 
-            const card = document.createElement('div');
-            card.className = 'session-card';
-            card.onclick = () => showSessionDetail(doc.id, session);
-            card.innerHTML = `
+            const activeCard = document.createElement('div');
+            activeCard.className = 'session-card';
+            activeCard.onclick = () => showSessionDetail(activeSession.id, activeSession);
+            activeCard.innerHTML = `
                 <div class="session-card-header">
-                    <span class="session-card-title">${startTime.toLocaleDateString()} at ${startTime.toLocaleTimeString()}</span>
-                    <span class="session-card-score ${scoreClass}">${(session.sessionScore * 100).toFixed(0)}%</span>
+                    <span class="session-card-title">Started ${activeSession.startTime.toLocaleDateString()} at ${activeSession.startTime.toLocaleTimeString()}</span>
+                    <span class="session-card-score ${activeScoreClass}">${((activeSession.sessionScore || 0) * 100).toFixed(0)}%</span>
                 </div>
                 <div class="session-card-details">
-                    <div>Duration: ${Math.round(duration / 60)} min</div>
-                    <div>Sitting: ${Math.round(session.sitDuration / 60)} min</div>
-                    <div>Buzzer: ${session.buzzerCount} times</div>
+                    <div>Status: Active</div>
+                    <div>Elapsed: ${Math.round(activeSession.duration / 60)} min</div>
+                    <div>Buzzer: ${activeSession.buzzerCount || 0} times</div>
                 </div>
             `;
-            sessionsList.appendChild(card);
-        });
+            currentSessionList.appendChild(activeCard);
+        } else {
+            currentSessionList.innerHTML = '<p class="no-data">No active session. Click Start Session to begin.</p>';
+        }
+
+        if (twoWeekSessions.length > 0) {
+            twoWeekSessions.forEach(session => {
+                const scoreClass = session.sessionScore >= 0.7 ? 'score-good' : 
+                                session.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
+
+                const card = document.createElement('div');
+                card.className = 'session-card';
+                card.onclick = () => showSessionDetail(session.id, session);
+                card.innerHTML = `
+                    <div class="session-card-header">
+                        <span class="session-card-title">${session.startTime.toLocaleDateString()} at ${session.startTime.toLocaleTimeString()}</span>
+                        <span class="session-card-score ${scoreClass}">${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
+                    </div>
+                    <div class="session-card-details">
+                        <div>Duration: ${Math.round(session.duration / 60)} min</div>
+                        <div>Sitting: ${Math.round((session.sitDuration || 0) / 60)} min</div>
+                        <div>Buzzer: ${session.buzzerCount || 0} times</div>
+                    </div>
+                `;
+                previousSessionsList.appendChild(card);
+            });
+        } else {
+            previousSessionsList.innerHTML = '<p class="no-data">No previous sessions in the last 2 weeks.</p>';
+        }
 
         // Update stats
         document.getElementById('statTotalSessions').textContent = totalSessions;
@@ -280,6 +320,10 @@ async function loadUserData() {
 function loadAnalytics() {
     if (!window.userTwoWeekSessions || window.userTwoWeekSessions.length === 0) {
         document.getElementById('analyticsChart').style.display = 'none';
+        document.getElementById('bestScore').textContent = '-';
+        document.getElementById('worstScore').textContent = '-';
+        document.getElementById('periodAvgScore').textContent = '-';
+        document.getElementById('periodSessionCount').textContent = '0';
         return;
     }
 
@@ -340,90 +384,18 @@ function loadAnalytics() {
     }
 }
 
-// Load Leaderboard
-async function loadLeaderboard() {
-    try {
-        const twoWeeksAgo = new Date();
-        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-
-        // Get all sessions from last 2 weeks
-        const sessionsSnapshot = await db.collection('sessions')
-            .where('startTime', '>=', twoWeeksAgo)
-            .get();
-
-        // Group by user
-        const userStats = {};
-        
-        for (const doc of sessionsSnapshot.docs) {
-            const session = doc.data();
-            
-            if (!userStats[session.userId]) {
-                // Use username from session or fetch from users collection
-                let username = session.username;
-                if (!username) {
-                    const userDoc = await db.collection('users').doc(session.userId).get();
-                    username = userDoc.exists ? userDoc.data().username : 'Anonymous';
-                }
-                userStats[session.userId] = {
-                    username: username,
-                    totalScore: 0,
-                    sessionCount: 0,
-                    totalTime: 0
-                };
-            }
-
-            userStats[session.userId].totalScore += session.sessionScore || 0;
-            userStats[session.userId].sessionCount += 1;
-            
-            const endTime = session.endTime ? session.endTime.toDate() : new Date();
-            const duration = (endTime - session.startTime.toDate()) / 1000;
-            userStats[session.userId].totalTime += duration;
-        }
-
-        // Sort by average score
-        const leaderboard = Object.entries(userStats)
-            .map(([userId, stats]) => ({
-                userId,
-                username: stats.username,
-                avgScore: (stats.totalScore / stats.sessionCount * 100).toFixed(0),
-                sessions: stats.sessionCount,
-                totalTime: (stats.totalTime / 3600).toFixed(1)
-            }))
-            .sort((a, b) => b.avgScore - a.avgScore);
-
-        // Display leaderboard
-        const tbody = document.getElementById('leaderboardBody');
-        tbody.innerHTML = '';
-
-        leaderboard.forEach((user, index) => {
-            const row = tbody.insertRow();
-            row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${user.username}</td>
-                <td>${user.avgScore}%</td>
-                <td>${user.sessions}</td>
-                <td>${user.totalTime}h</td>
-            `;
-        });
-
-        // Community average
-        const communityAvg = Object.values(userStats)
-            .reduce((sum, stats) => sum + (stats.totalScore / stats.sessionCount), 0) / Object.keys(userStats).length;
-        document.getElementById('statCommunityAvg').textContent = (communityAvg * 100).toFixed(0) + '%';
-
-    } catch (error) {
-        console.error('Error loading leaderboard:', error);
-    }
-}
-
 // Session Detail Modal
 function showSessionDetail(sessionId, session) {
     const modal = document.getElementById('sessionModal');
     const title = document.getElementById('sessionModalTitle');
     const body = document.getElementById('sessionModalBody');
 
-    const startTime = session.startTime.toDate();
-    const endTime = session.endTime ? session.endTime.toDate() : new Date();
+    const startTime = session.startTime && typeof session.startTime.toDate === 'function'
+        ? session.startTime.toDate()
+        : new Date(session.startTime);
+    const endTime = session.endTime
+        ? (typeof session.endTime.toDate === 'function' ? session.endTime.toDate() : new Date(session.endTime))
+        : new Date();
     const duration = (endTime - startTime) / 1000;
 
     title.textContent = `Session - ${startTime.toLocaleDateString()}`;
@@ -439,15 +411,15 @@ function showSessionDetail(sessionId, session) {
             </div>
             <div class="stat-row">
                 <span>Score:</span>
-                <span>${(session.sessionScore * 100).toFixed(0)}%</span>
+                <span>${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
             </div>
             <div class="stat-row">
                 <span>Sitting Time:</span>
-                <span>${Math.round(session.sitDuration / 60)} minutes</span>
+                <span>${Math.round((session.sitDuration || 0) / 60)} minutes</span>
             </div>
             <div class="stat-row">
                 <span>Buzzer Activations:</span>
-                <span>${session.buzzerCount}</span>
+                <span>${session.buzzerCount || 0}</span>
             </div>
         </div>
     `;
