@@ -193,10 +193,9 @@
                                              sessionQuality < 0.6 ? randomInt(1, 3) : 
                                              randomInt(0, 1);
                     
-                    // Calculate stress score (0-100, lower is better)
-                    const baseScore = sessionQuality * 100;
-                    const stressScore = Math.max(0, Math.min(100, 
-                        100 - baseScore + randomBetween(-10, 10)
+                    // Calculate session score (0-1, higher is better)
+                    const sessionScore = Math.max(0, Math.min(1, 
+                        sessionQuality + randomBetween(-0.1, 0.1)
                     ));
                     
                     // Create session
@@ -206,8 +205,9 @@
                         startTime: firebase.firestore.Timestamp.fromDate(startTime),
                         endTime: firebase.firestore.Timestamp.fromDate(endTime),
                         duration: durationSeconds,
+                        sitDuration: durationSeconds, // Assume fully sitting
                         buzzerCount: buzzerActivations,
-                        stressScore: Math.round(stressScore),
+                        sessionScore: sessionScore,
                         createdAt: firebase.firestore.Timestamp.fromDate(startTime)
                     });
                     
@@ -246,7 +246,7 @@
                         `✅ Generated session ${i + 1}/${sessionCount}\n` +
                         `   📅 ${startTime.toLocaleDateString()} ${startTime.toLocaleTimeString()}\n` +
                         `   ⏱️ Duration: ${Math.floor(durationSeconds / 60)} minutes\n` +
-                        `   📊 Score: ${Math.round(stressScore)}/100\n` +
+                        `   📊 Score: ${(sessionScore * 100).toFixed(0)}%\n` +
                         `   🔔 Buzzer: ${buzzerActivations} times\n` +
                         `   📈 Readings: ${readingCount}`,
                         'success'
