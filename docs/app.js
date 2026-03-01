@@ -1,12 +1,12 @@
 // Firebase Configuration
-// REPLACE WITH YOUR FIREBASE CONFIG
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyDhVpz_D9OTfckaLA792N0c-bqmGnBd7G4",
+    authDomain: "posturehealthtracker.firebaseapp.com",
+    projectId: "posturehealthtracker",
+    storageBucket: "posturehealthtracker.firebasestorage.app",
+    messagingSenderId: "330967946233",
+    appId: "1:330967946233:web:995732d6b544e67a46e328",
+    measurementId: "G-5YG2GL2W9Z"
 };
 
 // Initialize Firebase
