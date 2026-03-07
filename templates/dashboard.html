@@ -3,289 +3,623 @@
 {% block title %}Dashboard - PostureHealthTracker{% endblock %}
 
 {% block content %}
-<div class="dashboard">
-    <!-- Top Stats Cards -->
-    <div class="top-stats-grid">
-        <div class="top-stat-card">
-            <div class="stat-icon">📊</div>
-            <div class="stat-content">
-                <h3>Total Sessions</h3>
-                <p class="stat-number">{{ stats.total_sessions }}</p>
-            </div>
-        </div>
-        <div class="top-stat-card">
-            <div class="stat-icon">📈</div>
-            <div class="stat-content">
-                <h3>Avg Posture Score</h3>
-                <p class="stat-number">{{ (stats.avg_session_score * 100) | round(0) | int }}%</p>
-            </div>
-        </div>
-        <div class="top-stat-card">
-            <div class="stat-icon">🕐</div>
-            <div class="stat-content">
-                <h3>Total Sitting Time</h3>
-                <p class="stat-number">{{ (stats.total_sitting_time / 3600) | round(0) | int }}h {{ ((stats.total_sitting_time % 3600) / 60) | round(0) | int }}m</p>
-            </div>
-        </div>
-    </div>
+{% set avg_score_pct = (stats.avg_session_score * 100) | round(0) | int %}
 
-    <!-- Current Monitoring Session -->
-    <div class="monitoring-session-card">
-        <h3>Current Monitoring Session</h3>
-        <div class="session-status">
-            {% if active_session %}
-            <div class="status-indicator status-active"></div>
-            <span class="status-text"><strong>Status: Active</strong></span>
-            <p class="status-subtext">Monitoring in progress. Session ID: {{ active_session.id }}</p>
-            {% else %}
-            <div class="status-indicator status-inactive"></div>
-            <span class="status-text"><strong>Status: Not Active</strong></span>
-            <p class="status-subtext">No monitoring session running.</p>
-            {% endif %}
-        </div>
-        <div class="session-button-container">
-            {% if active_session %}
-            <button id="endSessionBtn" class="btn btn-secondary">End Monitoring</button>
-            {% else %}
-            <button id="startSessionBtn" class="btn btn-primary">Start Monitoring</button>
-            {% endif %}
-        </div>
-    </div>
+<style>
+.medical-dashboard {
+    max-width: 1120px;
+    margin: 0 auto;
+}
 
-    <!-- Posture Health Score -->
-    <div class="posture-health-card">
-        <h3>Posture Health Score</h3>
-        <div class="health-score-container">
-            <div class="health-bar-wrapper">
-                {% set score_pct = (stats.avg_session_score * 100) | round(0) | int %}
-                <div class="health-bar">
-                    <div class="health-segment segment-excellent" style="width: 20%;"></div>
-                    <div class="health-segment segment-good" style="width: 20%;"></div>
-                    <div class="health-segment segment-fair" style="width: 20%;"></div>
-                    <div class="health-segment segment-needs-improvement" style="width: 20%;"></div>
-                    <div class="health-segment segment-poor" style="width: 20%;"></div>
-                </div>
-                <div class="health-marker" style="left: {{ score_pct }}%;"></div>
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.summary-card {
+    background: #f4f6fb;
+    border: 1px solid #dbe2ef;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08);
+    position: relative;
+}
+
+.summary-card::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    border-radius: 0 0 12px 12px;
+    background: linear-gradient(90deg, #70b87f 0%, #48a2f3 100%);
+}
+
+.summary-label {
+    color: #37517d;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+
+.summary-value {
+    color: #1f3f72;
+    font-size: 2.4rem;
+    line-height: 1;
+    font-weight: 700;
+}
+
+.summary-value.compact {
+    font-size: 2.1rem;
+}
+
+.panel {
+    background: #f8f9fd;
+    border: 1px solid #dbe2ef;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08);
+    margin-bottom: 1rem;
+}
+
+.panel-head {
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid #d6dcea;
+}
+
+.panel-title {
+    margin: 0;
+    color: #24426f;
+    font-size: 1.45rem;
+    font-weight: 600;
+}
+
+.panel-body {
+    padding: 1rem 1.25rem;
+}
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    color: #314b75;
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.status-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #a5afc4;
+    display: inline-block;
+}
+
+.status-dot.active {
+    background: #42b86f;
+    box-shadow: 0 0 0 4px rgba(66, 184, 111, 0.22);
+}
+
+.status-subtext {
+    color: #667898;
+    font-size: 0.98rem;
+    margin: 0 0 1rem;
+}
+
+.monitor-action {
+    display: flex;
+    justify-content: center;
+}
+
+.monitor-btn {
+    min-width: 260px;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.score-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.8rem;
+    align-items: center;
+}
+
+.score-track {
+    position: relative;
+    height: 22px;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid #cad3e5;
+    background: linear-gradient(90deg, #76c68a 0%, #a8cf44 24%, #e5af3e 48%, #df6e48 72%, #cad1dd 100%);
+}
+
+.score-marker {
+    position: absolute;
+    top: -5px;
+    width: 3px;
+    height: 32px;
+    background: #24395f;
+}
+
+.score-value {
+    color: #1f3f72;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.score-status {
+    margin-top: 0.9rem;
+    color: #4a5d7f;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.score-status.alert {
+    color: #996515;
+}
+
+.layout-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 0.95rem;
+    align-items: start;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.history-table th {
+    color: #3a527d;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: left;
+    border-bottom: 1px solid #d8deea;
+    padding: 0.65rem 0.4rem;
+}
+
+.history-table td {
+    color: #3f5272;
+    font-size: 0.95rem;
+    border-bottom: 1px solid #e5e9f2;
+    padding: 0.65rem 0.4rem;
+}
+
+.history-table tbody tr {
+    cursor: pointer;
+}
+
+.history-table tbody tr:hover {
+    background: #f0f4fb;
+}
+
+.score-good {
+    color: #2f8f46;
+    font-weight: 700;
+}
+
+.score-medium {
+    color: #996515;
+    font-weight: 700;
+}
+
+.score-poor {
+    color: #be3f3f;
+    font-weight: 700;
+}
+
+.insight-box {
+    background: #f2f4fb;
+    border: 1px solid #d8dff0;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08);
+    padding: 1rem;
+}
+
+.insight-title {
+    color: #365688;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0 0 0.8rem;
+}
+
+.insight-text {
+    color: #2f4f7c;
+    font-size: 1.1rem;
+    line-height: 1.45;
+    margin: 0 0 0.8rem;
+}
+
+.tip {
+    border-top: 1px solid #d6dded;
+    padding-top: 0.8rem;
+    color: #5a6d8e;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.advanced-wrap {
+    margin-top: 1rem;
+}
+
+.advanced-toggle {
+    list-style: none;
+    cursor: pointer;
+    color: #355781;
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #d6ddeb;
+    border-radius: 8px;
+    background: #f3f6fb;
+}
+
+.advanced-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.advanced-content {
+    margin-top: 0.8rem;
+}
+
+.mini-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+}
+
+.mini-card {
+    background: #ffffff;
+    border: 1px solid #dce2ef;
+    border-radius: 8px;
+    padding: 0.8rem;
+}
+
+.mini-label {
+    color: #4f6389;
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+.mini-value {
+    color: #244a7f;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.break-status {
+    margin: 0 0 1rem;
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    background: #e8f6ec;
+    border-left: 4px solid #41b56c;
+    color: #21653a;
+    font-weight: 600;
+}
+
+.break-status.take-break-needed {
+    background: #fff4de;
+    border-left-color: #d4982f;
+    color: #875f15;
+}
+
+.live-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.live-table th,
+.live-table td {
+    font-size: 0.82rem;
+    border-bottom: 1px solid #e2e8f3;
+    padding: 0.5rem;
+    text-align: left;
+    color: #3d5175;
+}
+
+.badge-yes {
+    color: #2f8f46;
+    font-weight: 700;
+}
+
+.badge-no {
+    color: #be3f3f;
+    font-weight: 700;
+}
+
+@media (max-width: 980px) {
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .layout-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-value {
+        font-size: 2rem;
+    }
+
+    .panel-title {
+        font-size: 1.2rem;
+    }
+
+    .status-row {
+        font-size: 1.05rem;
+    }
+
+    .score-value {
+        font-size: 2rem;
+    }
+}
+</style>
+
+<div class="medical-dashboard">
+    <section class="summary-grid">
+        <article class="summary-card">
+            <p class="summary-label">Total Sessions</p>
+            <p class="summary-value">{{ stats.total_sessions }}</p>
+        </article>
+        <article class="summary-card">
+            <p class="summary-label">Avg Posture Score</p>
+            <p class="summary-value">{{ avg_score_pct }}%</p>
+        </article>
+        <article class="summary-card">
+            <p class="summary-label">Total Sitting Time</p>
+            <p class="summary-value compact">{{ (stats.total_sitting_time / 3600) | round(0) | int }}h {{ ((stats.total_sitting_time % 3600) / 60) | round(0) | int }}m</p>
+        </article>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Current Monitoring Session</h3>
+        </div>
+        <div class="panel-body">
+            <div class="status-row">
+                <span class="status-dot {% if active_session %}active{% endif %}"></span>
+                <span>Status: {% if active_session %}Active{% else %}Not Active{% endif %}</span>
             </div>
-            <div class="health-score-value">{{ score_pct }}%</div>
-        </div>
-        <div class="health-status">
-            {% if score_pct >= 80 %}
-            <span class="status-icon status-excellent">✓</span>
-            <span class="status-label">Status: Excellent</span>
-            {% elif score_pct >= 60 %}
-            <span class="status-icon status-good">✓</span>
-            <span class="status-label">Status: Good</span>
-            {% elif score_pct >= 40 %}
-            <span class="status-icon status-fair">⚠</span>
-            <span class="status-label">Status: Fair</span>
-            {% else %}
-            <span class="status-icon status-warning">⚠</span>
-            <span class="status-label">Status: Needs Improvement</span>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Two Column Layout: Session History & Posture Insight -->
-    <div class="two-column-layout">
-        <!-- Session History -->
-        <div class="session-history-card">
-            <h3>Session History</h3>
-            {% if sessions %}
-            <table class="simple-sessions-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Duration</th>
-                        <th>Posture Score</th>
-                        <th>Alerts</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for session in sessions[:10] %}
-                    {% set score = session.session_score if session.session_score is not none else 1.0 %}
-                    {% set score_pct = (score * 100) | round(0) | int %}
-                    <tr onclick="window.location='{{ url_for('view_session', session_id=session.id) }}';" style="cursor: pointer;">
-                        <td>{{ session.start_time.strftime('%b %d, %Y') }}</td>
-                        <td>{{ (session.get_duration() / 60) | round(0) | int }} min</td>
-                        <td>
-                            {% if score_pct >= 70 %}
-                            <span class="score-text score-good">{{ score_pct }}%</span>
-                            {% elif score_pct >= 50 %}
-                            <span class="score-text score-medium">{{ score_pct }}%</span>
-                            {% else %}
-                            <span class="score-text score-poor">{{ score_pct }}%</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="no-data">No sessions yet. Start your first session to track your posture health!</p>
-            {% endif %}
-        </div>
-
-        <!-- Posture Insight -->
-        <div class="posture-insight-card">
-            <div class="insight-header">
-                <span class="insight-icon">💡</span>
-                <h3>Posture Insight</h3>
-            </div>
-            <div class="insight-content">
-                {% set score_pct = (stats.avg_session_score * 100) | round(0) | int %}
-                {% if sessions|length > 5 %}
-                    {% set recent_avg = (sessions[:5] | map(attribute='session_score') | sum / 5 * 100) | round(0) | int %}
-                    {% set older_avg = (sessions[5:10] | map(attribute='session_score') | sum / (sessions[5:10]|length) * 100) | round(0) | int if sessions|length > 5 else score_pct %}
-                    {% set improvement = recent_avg - older_avg %}
-                    {% if improvement > 0 %}
-                    <p class="insight-message">Your posture score improved {{ improvement }}% this week.</p>
-                    {% elif improvement < 0 %}
-                    <p class="insight-message">Your posture score decreased {{ -improvement }}% this week. Let's work on improving!</p>
-                    {% else %}
-                    <p class="insight-message">Your posture score remained stable this week.</p>
-                    {% endif %}
+            <p class="status-subtext">
+                {% if active_session %}
+                Monitoring session running (Session {{ active_session.id }}).
                 {% else %}
-                    <p class="insight-message">Complete more sessions to see your progress insights.</p>
+                No monitoring session running.
                 {% endif %}
-                
-                <div class="insight-tip">
-                    <span class="tip-icon">💡</span>
-                    <div class="tip-content">
-                        <strong>Tip:</strong>
-                        {% if score_pct < 50 %}
-                        Keep your shoulders relaxed and your screen at eye level. Take regular breaks every hour.
-                        {% elif score_pct < 70 %}
-                        Keep your shoulders relaxed and your screen at eye level.
-                        {% else %}
-                        Great job! Maintain your posture by staying mindful throughout the day.
-                        {% endif %}
-                    </div>
+            </p>
+            <div class="monitor-action">
+                {% if active_session %}
+                <button id="endSessionBtn" class="btn btn-secondary monitor-btn">End Monitoring</button>
+                {% else %}
+                <button id="startSessionBtn" class="btn btn-primary monitor-btn">Start Monitoring</button>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Posture Health Score</h3>
+        </div>
+        <div class="panel-body">
+            <div class="score-wrap">
+                <div class="score-track">
+                    <span class="score-marker" style="left: calc({{ avg_score_pct }}% - 2px);"></span>
                 </div>
+                <div class="score-value">{{ avg_score_pct }}%</div>
             </div>
+            <p class="score-status {% if avg_score_pct < 60 %}alert{% endif %}">
+                {% if avg_score_pct >= 80 %}
+                Status: Excellent
+                {% elif avg_score_pct >= 60 %}
+                Status: Good
+                {% elif avg_score_pct >= 40 %}
+                Status: Needs Improvement
+                {% else %}
+                Status: Needs Immediate Attention
+                {% endif %}
+            </p>
         </div>
-    </div>
+    </section>
 
-    <!-- Hidden: Advanced panels for active sessions -->
-    {% if active_session %}
-    <details class="advanced-panel" style="margin-top: 2rem;">
-        <summary style="cursor: pointer; padding: 1rem; background: var(--bg-light); border-radius: var(--radius-md); font-weight: 600; color: var(--text-primary);">
-            🔧 Advanced Session Monitoring (Click to expand)
-        </summary>
-        <div style="margin-top: 1rem;">
-            <div class="sessions-container break-tracker-panel">
-                <h3>Active Session Break Tracker</h3>
-                <div class="break-tracker-grid">
-            <div class="overview-card">
-                <h3>Breaks Taken</h3>
-                <p class="value" id="breakCountValue">{{ active_session.break_count }}</p>
+    <section class="layout-grid">
+        <article class="panel">
+            <div class="panel-head">
+                <h3 class="panel-title">Session History</h3>
             </div>
-            <div class="overview-card">
-                <h3>Last Break</h3>
-                <p class="value break-time" id="lastBreakTime">
-                    {% if active_session.last_break_time %}
-                    {{ active_session.last_break_time.strftime('%Y-%m-%d %H:%M:%S') }}
-                    {% else %}
-                    No break taken yet
-                    {% endif %}
-                </p>
+            <div class="panel-body">
+                {% if sessions %}
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Duration</th>
+                            <th>Posture Score</th>
+                            <th>Alerts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for session in sessions[:8] %}
+                        {% set score = session.session_score if session.session_score is not none else 1.0 %}
+                        {% set score_pct = (score * 100) | round(0) | int %}
+                        <tr onclick="window.location='{{ url_for('view_session', session_id=session.id) }}';">
+                            <td>{{ session.start_time.strftime('%b %d, %Y') }}</td>
+                            <td>{{ (session.get_duration() / 60) | round(0) | int }} min</td>
+                            <td>
+                                {% if score_pct >= 70 %}
+                                <span class="score-good">{{ score_pct }}%</span>
+                                {% elif score_pct >= 50 %}
+                                <span class="score-medium">{{ score_pct }}%</span>
+                                {% else %}
+                                <span class="score-poor">{{ score_pct }}%</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="status-subtext">No sessions yet. Start your first monitoring session.</p>
+                {% endif %}
             </div>
-            <div class="overview-card">
-                <h3>Next Break Due</h3>
-                <p class="value break-time" id="nextBreakTime">
-                    {% if active_session.next_break_time %}
-                    {{ active_session.next_break_time.strftime('%Y-%m-%d %H:%M:%S') }}
-                    {% else %}
-                    Not available
-                    {% endif %}
-                </p>
-            </div>
-        </div>
-        <div class="live-alert-status {% if active_session.take_break_reasons %}take-break-needed{% endif %}" id="takeBreakStatus">
-            {% if active_session.take_break_reasons %}
-            Take a break now. Triggered by: {{ active_session.take_break_reasons | join(', ') }}.
+        </article>
+
+        <aside class="insight-box">
+            <h3 class="insight-title">Posture Insight</h3>
+            {% if sessions|length >= 2 %}
+            {% set latest_score = ((sessions[0].session_score if sessions[0].session_score is not none else 1.0) * 100) | round(0) | int %}
+            {% set previous_score = ((sessions[1].session_score if sessions[1].session_score is not none else 1.0) * 100) | round(0) | int %}
+            {% set score_delta = latest_score - previous_score %}
+            {% if score_delta > 0 %}
+            <p class="insight-text">Your posture score improved {{ score_delta }}% in your most recent session.</p>
+            {% elif score_delta < 0 %}
+            <p class="insight-text">Your posture score dropped {{ -score_delta }}% in your most recent session.</p>
             {% else %}
-            You are on track. No break needed yet.
+            <p class="insight-text">Your posture score stayed stable in your most recent session.</p>
             {% endif %}
-        </div>
-        {% else %}
-        <p class="no-data">No active session. Start a session to track break timing.</p>
-        {% endif %}
-    </div>
+            {% else %}
+            <p class="insight-text">Complete more sessions to unlock trend insights.</p>
+            {% endif %}
 
-    <div class="sessions-container live-sensor-panel">
-        <h3>Live Sensor Feed</h3>
-        {% if active_session %}
-        <div class="live-sensor-grid">
-            <div class="overview-card">
-                <h3>Last Packet</h3>
-                <p class="value break-time" id="liveSensorTimestamp">Waiting for data...</p>
+            <div class="tip">
+                <strong>Tip:</strong>
+                {% if avg_score_pct < 50 %}
+                Keep shoulders relaxed, feet flat, and place your screen at eye level.
+                {% elif avg_score_pct < 70 %}
+                Take a short stretch break every 45-60 minutes to keep form consistent.
+                {% else %}
+                Great consistency. Keep micro-breaks and neutral neck alignment.
+                {% endif %}
             </div>
-            <div class="overview-card">
-                <h3>Reading Count</h3>
-                <p class="value" id="liveReadingCount">0</p>
-            </div>
-            <div class="overview-card">
-                <h3>Pitch</h3>
-                <p class="value" id="livePitch">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>Roll</h3>
-                <p class="value" id="liveRoll">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>FSR Left</h3>
-                <p class="value" id="liveFsrLeft">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>FSR Right</h3>
-                <p class="value" id="liveFsrRight">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>FSR Center</h3>
-                <p class="value" id="liveFsrCenter">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>Stress</h3>
-                <p class="value" id="liveStress">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>Seated</h3>
-                <p class="value" id="liveSeated">-</p>
-            </div>
-            <div class="overview-card">
-                <h3>Buzzer Triggered</h3>
-                <p class="value" id="liveBuzzerTriggered">-</p>
-            </div>
-        </div>
+        </aside>
+    </section>
 
-        <div class="live-readings-stream">
-            <h4>Latest Sensor Packets</h4>
-            <table class="readings-table live-feed-table">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Pitch</th>
-                        <th>Roll</th>
-                        <th>FSR L</th>
-                        <th>FSR R</th>
-                        <th>FSR C</th>
-                        <th>Stress</th>
-                        <th>Seated</th>
-                        <th>Buzzer</th>
-                    </tr>
-                </thead>
-                <tbody id="liveReadingsBody">
-                    <tr>
-                        <td colspan="9" class="no-data">Waiting for incoming sensor packets...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        </div>
-        </div>
+    {% if active_session %}
+    <div class="advanced-wrap">
+        <details>
+            <summary class="advanced-toggle">Advanced Live Monitoring</summary>
+            <div class="advanced-content">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3 class="panel-title">Break Tracker</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="mini-grid">
+                            <div class="mini-card">
+                                <p class="mini-label">Breaks Taken</p>
+                                <p class="mini-value" id="breakCountValue">{{ active_session.break_count }}</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Last Break</p>
+                                <p class="mini-value" id="lastBreakTime">
+                                    {% if active_session.last_break_time %}
+                                    {{ active_session.last_break_time.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% else %}
+                                    No break taken yet
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Next Break Due</p>
+                                <p class="mini-value" id="nextBreakTime">
+                                    {% if active_session.next_break_time %}
+                                    {{ active_session.next_break_time.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% else %}
+                                    Not available
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+
+                        <p class="break-status {% if active_session.take_break_reasons %}take-break-needed{% endif %}" id="takeBreakStatus">
+                            {% if active_session.take_break_reasons %}
+                            Take a break now. Triggered by: {{ active_session.take_break_reasons | join(', ') }}.
+                            {% else %}
+                            You are on track. No break needed yet.
+                            {% endif %}
+                        </p>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3 class="panel-title">Live Sensor Feed</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="mini-grid">
+                            <div class="mini-card">
+                                <p class="mini-label">Last Packet</p>
+                                <p class="mini-value" id="liveSensorTimestamp">Waiting for data...</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Reading Count</p>
+                                <p class="mini-value" id="liveReadingCount">0</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Pitch</p>
+                                <p class="mini-value" id="livePitch">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Roll</p>
+                                <p class="mini-value" id="liveRoll">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">FSR Left</p>
+                                <p class="mini-value" id="liveFsrLeft">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">FSR Right</p>
+                                <p class="mini-value" id="liveFsrRight">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">FSR Center</p>
+                                <p class="mini-value" id="liveFsrCenter">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Stress</p>
+                                <p class="mini-value" id="liveStress">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Seated</p>
+                                <p class="mini-value" id="liveSeated">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Buzzer Triggered</p>
+                                <p class="mini-value" id="liveBuzzerTriggered">-</p>
+                            </div>
+                        </div>
+
+                        <table class="live-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Pitch</th>
+                                    <th>Roll</th>
+                                    <th>FSR L</th>
+                                    <th>FSR R</th>
+                                    <th>FSR C</th>
+                                    <th>Stress</th>
+                                    <th>Seated</th>
+                                    <th>Buzzer</th>
+                                </tr>
+                            </thead>
+                            <tbody id="liveReadingsBody">
+                                <tr>
+                                    <td colspan="9">Waiting for incoming sensor packets...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
         </details>
+    </div>
     {% endif %}
 </div>
 
@@ -502,27 +836,29 @@ async function refreshActiveSessionBreakStats(sessionId) {
     }
 }
 
-document.getElementById('startSessionBtn').addEventListener('click', async () => {
-    try {
-        const response = await fetch('/api/start-session', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
+const startSessionBtn = document.getElementById('startSessionBtn');
+if (startSessionBtn) {
+    startSessionBtn.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/start-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert('New session started! Session ID: ' + data.session_id);
+                localStorage.setItem('currentSessionId', data.session_id);
+                window.location.reload();
             }
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            alert('New session started! Session ID: ' + data.session_id);
-            // Store session ID in localStorage for monitoring
-            localStorage.setItem('currentSessionId', data.session_id);
-            window.location.reload();
+        } catch (error) {
+            alert('Error starting session: ' + error);
         }
-    } catch (error) {
-        alert('Error starting session: ' + error);
-    }
-});
+    });
+}
 
 const endSessionBtn = document.getElementById('endSessionBtn');
 if (endSessionBtn) {
