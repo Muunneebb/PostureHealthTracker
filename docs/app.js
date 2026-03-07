@@ -1,4 +1,3 @@
-// Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDhVpz_D9OTfckaLA792N0c-bqmGnBd7G4",
     authDomain: "posturehealthtracker.firebaseapp.com",
@@ -9,15 +8,15 @@ const firebaseConfig = {
     measurementId: "G-5YG2GL2W9Z"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
 let currentUser = null;
 let chart = null;
+let activeSessionInterval = null; 
+let currentActiveSessionId = null; 
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     auth.onAuthStateChanged(user => {
         if (user) {
@@ -30,12 +29,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Auth Functions
 function toggleForm() {
     document.getElementById('loginForm').style.display = 
         document.getElementById('loginForm').style.display === 'none' ? 'block' : 'none';
     document.getElementById('registerForm').style.display = 
         document.getElementById('registerForm').style.display === 'none' ? 'block' : 'none';
+    
+    document.getElementById('loginError').classList.remove('show');
+    document.getElementById('registerError').classList.remove('show');
 }
 
 async function login() {
@@ -43,8 +44,10 @@ async function login() {
     const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
 
+    errorDiv.classList.remove('show');
+
     if (!email || !password) {
-        errorDiv.textContent = 'Please fill in all fields';
+        errorDiv.textContent = 'Please fill in all fields.';
         errorDiv.classList.add('show');
         return;
     }
@@ -52,7 +55,11 @@ async function login() {
     try {
         await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
-        errorDiv.textContent = error.message;
+        if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            errorDiv.textContent = 'Invalid email or password. Please try again.';
+        } else {
+            errorDiv.textContent = error.message;
+        }
         errorDiv.classList.add('show');
     }
 }
@@ -63,14 +70,16 @@ async function register() {
     const username = document.getElementById('registerUsername').value;
     const errorDiv = document.getElementById('registerError');
 
+    errorDiv.classList.remove('show');
+
     if (!email || !password || !username) {
-        errorDiv.textContent = 'Please fill in all fields';
+        errorDiv.textContent = 'Please fill in all fields.';
         errorDiv.classList.add('show');
         return;
     }
 
     if (password.length < 6) {
-        errorDiv.textContent = 'Password must be at least 6 characters';
+        errorDiv.textContent = 'Password must be at least 6 characters.';
         errorDiv.classList.add('show');
         return;
     }
@@ -78,7 +87,6 @@ async function register() {
     try {
         const result = await auth.createUserWithEmailAndPassword(email, password);
         
-        // Create user document in Firestore
         await db.collection('users').doc(result.user.uid).set({
             username: username,
             email: email,
@@ -90,18 +98,29 @@ async function register() {
         currentUser = result.user;
         showDashboard();
     } catch (error) {
-        errorDiv.textContent = error.message;
+        if (error.code === 'auth/email-already-in-use') {
+            errorDiv.textContent = 'An account with this email already exists.';
+        } else {
+            errorDiv.textContent = error.message;
+        }
         errorDiv.classList.add('show');
     }
 }
 
 function logout() {
+    if (activeSessionInterval) {
+        clearInterval(activeSessionInterval);
+        activeSessionInterval = null;
+    }
+    currentActiveSessionId = null;
+
     auth.signOut().then(() => {
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
         showAuthPage();
     });
 }
 
-// UI Functions
 function showAuthPage() {
     document.getElementById('authPage').style.display = 'block';
     document.getElementById('dashboardPage').style.display = 'none';
@@ -111,7 +130,6 @@ function showDashboard() {
     document.getElementById('authPage').style.display = 'none';
     document.getElementById('dashboardPage').style.display = 'block';
     
-    // Get user display name from Firestore
     db.collection('users').doc(currentUser.uid).get().then(doc => {
         if (doc.exists) {
             document.getElementById('userDisplayName').textContent = doc.data().username;
@@ -122,7 +140,6 @@ function showDashboard() {
 }
 
 function switchTab(tab, button) {
-    // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(el => {
         el.classList.remove('active');
         el.style.display = 'none';
@@ -131,7 +148,6 @@ function switchTab(tab, button) {
         el.classList.remove('active');
     });
 
-    // Show selected tab
     const selectedTab = document.getElementById(tab + 'Tab');
     selectedTab.classList.add('active');
     selectedTab.style.display = 'block';
@@ -144,8 +160,10 @@ function switchTab(tab, button) {
     }
 }
 
-// Session Management
 async function startNewSession() {
+    document.getElementById('startSessionBtn').style.display = 'none';
+    document.getElementById('stopSessionBtn').style.display = 'inline-block';
+
     const sessionData = {
         userId: currentUser.uid,
         startTime: new Date(),
@@ -158,22 +176,43 @@ async function startNewSession() {
 
     try {
         const docRef = await db.collection('sessions').add(sessionData);
-        console.log('Session started:', docRef.id);
-        
-        // Simulate sensor data collection
+        currentActiveSessionId = docRef.id;
         simulateSessionData(docRef.id);
-        
         loadUserData();
     } catch (error) {
         console.error('Error starting session:', error);
+        document.getElementById('startSessionBtn').style.display = 'inline-block';
+        document.getElementById('stopSessionBtn').style.display = 'none';
+    }
+}
+
+async function stopSession() {
+    if (!currentActiveSessionId) return;
+
+    if (activeSessionInterval) {
+        clearInterval(activeSessionInterval);
+        activeSessionInterval = null;
+    }
+
+    try {
+        await db.collection('sessions').doc(currentActiveSessionId).update({
+            endTime: new Date()
+        });
+        
+        document.getElementById('startSessionBtn').style.display = 'inline-block';
+        document.getElementById('stopSessionBtn').style.display = 'none';
+        
+        currentActiveSessionId = null;
+        loadUserData();
+    } catch (error) {
+        console.error('Error stopping session:', error);
     }
 }
 
 function simulateSessionData(sessionId) {
-    // Simulate 30 seconds of sensor readings
     let readingCount = 0;
     
-    const interval = setInterval(async () => {
+    activeSessionInterval = setInterval(async () => {
         readingCount++;
         
         const reading = {
@@ -194,23 +233,37 @@ function simulateSessionData(sessionId) {
             console.error('Error adding reading:', error);
         }
 
-        if (readingCount >= 30) {
-            clearInterval(interval);
-            
-            // End session
-            await db.collection('sessions').doc(sessionId).update({
-                endTime: new Date()
-            });
-            
-            loadUserData();
+        if (readingCount >= 3600) {
+            stopSession();
         }
     }, 1000);
 }
 
-// Load User Data
+async function deleteSession(event, sessionId) {
+    if (event) {
+        event.stopPropagation();
+    }
+
+    if (confirm("Are you sure you want to permanently delete this session?")) {
+        try {
+            const readings = await db.collection('sessions').doc(sessionId).collection('readings').get();
+            const batch = db.batch();
+            readings.forEach(doc => batch.delete(doc.ref));
+            
+            batch.delete(db.collection('sessions').doc(sessionId));
+            await batch.commit();
+
+            closeSessionModal();
+            loadUserData(); 
+        } catch(error) {
+            console.error("Error deleting session:", error);
+            alert("Failed to delete session.");
+        }
+    }
+}
+
 async function loadUserData() {
     try {
-        // Get user sessions
         const sessionsSnapshot = await db.collection('sessions')
             .where('userId', '==', currentUser.uid)
             .orderBy('startTime', 'desc')
@@ -219,15 +272,14 @@ async function loadUserData() {
         let totalSessions = 0;
         let totalSitting = 0;
         let totalScore = 0;
-        let twoWeekSessions = [];
+        let recentSessions = [];
         let activeSession = null;
-        const twoWeeksAgo = new Date();
-        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
         const currentSessionList = document.getElementById('currentSessionList');
         const previousSessionsList = document.getElementById('previousSessionsList');
-        currentSessionList.innerHTML = '';
-        previousSessionsList.innerHTML = '';
+        
+        if(currentSessionList) currentSessionList.innerHTML = '';
+        if(previousSessionsList) previousSessionsList.innerHTML = '';
 
         sessionsSnapshot.forEach(doc => {
             const session = doc.data();
@@ -235,30 +287,26 @@ async function loadUserData() {
             const endTime = session.endTime ? session.endTime.toDate() : new Date();
             const duration = (endTime - startTime) / 1000;
             
-            totalSessions++;
-            totalSitting += session.sitDuration || 0;
-            totalScore += session.sessionScore || 0;
-
-            if (!session.endTime && !activeSession) {
-                activeSession = {
-                    ...session,
-                    id: doc.id,
-                    startTime: startTime,
-                    duration: duration
-                };
+            if (session.endTime) {
+                totalSessions++;
+                totalSitting += session.sitDuration || 0;
+                totalScore += session.sessionScore || 0;
             }
 
-            if (startTime >= twoWeeksAgo && session.endTime) {
-                twoWeekSessions.push({
-                    ...session,
-                    id: doc.id,
-                    startTime: startTime,
-                    duration: duration
-                });
+            if (!session.endTime && !activeSession) {
+                activeSession = { ...session, id: doc.id, startTime: startTime, duration: duration };
+            }
+
+            if (session.endTime && recentSessions.length < 20) {
+                recentSessions.push({ ...session, id: doc.id, startTime: startTime, duration: duration });
             }
         });
 
         if (activeSession) {
+            document.getElementById('startSessionBtn').style.display = 'none';
+            document.getElementById('stopSessionBtn').style.display = 'inline-block';
+            currentActiveSessionId = activeSession.id;
+
             const activeScoreClass = activeSession.sessionScore >= 0.7 ? 'score-good' : 
                 activeSession.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
 
@@ -267,22 +315,27 @@ async function loadUserData() {
             activeCard.onclick = () => showSessionDetail(activeSession.id, activeSession);
             activeCard.innerHTML = `
                 <div class="session-card-header">
-                    <span class="session-card-title">Started ${activeSession.startTime.toLocaleDateString()} at ${activeSession.startTime.toLocaleTimeString()}</span>
+                    <span class="session-card-title">Session Started at ${activeSession.startTime.toLocaleTimeString()}</span>
                     <span class="session-card-score ${activeScoreClass}">${((activeSession.sessionScore || 0) * 100).toFixed(0)}%</span>
                 </div>
                 <div class="session-card-details">
                     <div>Status: Active</div>
-                    <div>Elapsed: ${Math.round(activeSession.duration / 60)} min</div>
-                    <div>Buzzer: ${activeSession.buzzerCount || 0} times</div>
+                    <div>Elapsed: ${Math.round(activeSession.duration / 60)}m</div>
+                    <div>Alerts: ${activeSession.buzzerCount || 0}</div>
+                </div>
+                <div style="text-align: right; margin-top: 10px;">
+                    <button onclick="deleteSession(event, '${activeSession.id}')" style="background: transparent; border: none; color: var(--danger); cursor: pointer; font-weight: 600; text-decoration: underline;">Delete Session</button>
                 </div>
             `;
-            currentSessionList.appendChild(activeCard);
+            if(currentSessionList) currentSessionList.appendChild(activeCard);
         } else {
-            currentSessionList.innerHTML = '<p class="no-data">No active session. Click Start Session to begin.</p>';
+            document.getElementById('startSessionBtn').style.display = 'inline-block';
+            document.getElementById('stopSessionBtn').style.display = 'none';
+            if(currentSessionList) currentSessionList.innerHTML = '<p class="no-data">No active session. Click Start Session to begin.</p>';
         }
 
-        if (twoWeekSessions.length > 0) {
-            twoWeekSessions.forEach(session => {
+        if (recentSessions.length > 0) {
+            recentSessions.forEach(session => {
                 const scoreClass = session.sessionScore >= 0.7 ? 'score-good' : 
                                 session.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
 
@@ -295,35 +348,35 @@ async function loadUserData() {
                         <span class="session-card-score ${scoreClass}">${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
                     </div>
                     <div class="session-card-details">
-                        <div>Duration: ${Math.round(session.duration / 60)} min</div>
-                        <div>Sitting: ${Math.round((session.sitDuration || 0) / 60)} min</div>
-                        <div>Buzzer: ${session.buzzerCount || 0} times</div>
+                        <div>Duration: ${Math.round(session.duration / 60)}m</div>
+                        <div>Sitting: ${Math.round((session.sitDuration || 0) / 60)}m</div>
+                        <div>Alerts: ${session.buzzerCount || 0}</div>
+                    </div>
+                    <div style="text-align: right; margin-top: 10px;">
+                        <button onclick="deleteSession(event, '${session.id}')" style="background: transparent; border: none; color: var(--danger); cursor: pointer; font-weight: 600; text-decoration: underline;">Delete Session</button>
                     </div>
                 `;
-                previousSessionsList.appendChild(card);
+                if(previousSessionsList) previousSessionsList.appendChild(card);
             });
         } else {
-            previousSessionsList.innerHTML = '<p class="no-data">No previous sessions in the last 2 weeks.</p>';
+            if(previousSessionsList) previousSessionsList.innerHTML = '<p class="no-data">No previous sessions available.</p>';
         }
 
-        // Update stats
         document.getElementById('statTotalSessions').textContent = totalSessions;
-        document.getElementById('statTotalSitting').textContent = (totalSitting / 3600).toFixed(1) + 'h';
+        document.getElementById('statTotalSitting').textContent = Math.floor(totalSitting / 3600) + 'h ' + Math.floor((totalSitting % 3600) / 60) + 'm';
         
         const avgScore = totalSessions ? (totalScore / totalSessions * 100).toFixed(0) : 0;
         document.getElementById('statAvgScore').textContent = avgScore + '%';
 
-        // Store for analytics
-        window.userTwoWeekSessions = twoWeekSessions;
+        window.userRecentSessions = recentSessions;
 
     } catch (error) {
         console.error('Error loading user data:', error);
     }
 }
 
-// Load Analytics
 function loadAnalytics() {
-    if (!window.userTwoWeekSessions || window.userTwoWeekSessions.length === 0) {
+    if (!window.userRecentSessions || window.userRecentSessions.length === 0) {
         document.getElementById('analyticsChart').style.display = 'none';
         document.getElementById('bestScore').textContent = '-';
         document.getElementById('worstScore').textContent = '-';
@@ -332,7 +385,9 @@ function loadAnalytics() {
         return;
     }
 
-    const sessions = window.userTwoWeekSessions;
+    document.getElementById('analyticsChart').style.display = 'block';
+
+    const sessions = window.userRecentSessions;
     const scores = sessions.map(s => s.sessionScore * 100);
     const dates = sessions.map(s => s.startTime.toLocaleDateString());
 
@@ -349,83 +404,78 @@ function loadAnalytics() {
             datasets: [{
                 label: 'Session Score (%)',
                 data: scores.reverse(),
-                borderColor: '#2196F3',
-                backgroundColor: 'rgba(33, 150, 243, 0.1)',
-                tension: 0.4,
+                borderColor: '#7E3EAC',
+                backgroundColor: 'rgba(126, 62, 172, 0.15)',
+                borderWidth: 2,
+                tension: 0.1, 
                 fill: true,
-                pointRadius: 5,
-                pointBackgroundColor: '#2196F3'
+                pointRadius: 4,
+                pointBackgroundColor: '#7E3EAC',
+                pointBorderColor: '#ffffff'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                title: {
-                    display: true,
-                    text: '2-Week Session Scores'
-                }
+                title: { display: false },
+                legend: { labels: { color: '#ffffff', font: { family: 'Segoe UI', size: 14 } } }
             },
             scales: {
-                y: {
-                    min: 0,
-                    max: 100,
-                    title: {
-                        display: true,
-                        text: 'Score (%)'
-                    }
+                y: { 
+                    min: 0, max: 100, 
+                    ticks: { color: '#94a3b8', font: { family: 'Segoe UI' } }, 
+                    grid: { color: '#2d2d35' } 
+                },
+                x: { 
+                    ticks: { color: '#94a3b8', font: { family: 'Segoe UI' } }, 
+                    grid: { color: '#2d2d35' } 
                 }
             }
         }
     });
 
-    // Update analytics stats
     if (scores.length > 0) {
         document.getElementById('bestScore').textContent = Math.max(...scores).toFixed(0) + '%';
         document.getElementById('worstScore').textContent = Math.min(...scores).toFixed(0) + '%';
-        document.getElementById('periodAvgScore').textContent = 
-            (scores.reduce((a, b) => a + b) / scores.length).toFixed(0) + '%';
+        document.getElementById('periodAvgScore').textContent = (scores.reduce((a, b) => a + b) / scores.length).toFixed(0) + '%';
         document.getElementById('periodSessionCount').textContent = scores.length;
     }
 }
 
-// Session Detail Modal
 function showSessionDetail(sessionId, session) {
     const modal = document.getElementById('sessionModal');
     const title = document.getElementById('sessionModalTitle');
     const body = document.getElementById('sessionModalBody');
 
-    const startTime = session.startTime && typeof session.startTime.toDate === 'function'
-        ? session.startTime.toDate()
-        : new Date(session.startTime);
-    const endTime = session.endTime
-        ? (typeof session.endTime.toDate === 'function' ? session.endTime.toDate() : new Date(session.endTime))
-        : new Date();
+    const startTime = session.startTime && typeof session.startTime.toDate === 'function' ? session.startTime.toDate() : new Date(session.startTime);
+    const endTime = session.endTime ? (typeof session.endTime.toDate === 'function' ? session.endTime.toDate() : new Date(session.endTime)) : new Date();
     const duration = (endTime - startTime) / 1000;
 
-    title.textContent = `Session - ${startTime.toLocaleDateString()}`;
+    title.textContent = `Session Details`;
     body.innerHTML = `
         <div class="session-detail">
-            <div class="stat-row">
-                <span>Start Time:</span>
-                <span>${startTime.toLocaleString()}</span>
+            <div class="stat-row cyber-row">
+                <span>Date & Time:</span>
+                <span class="neon-text">${startTime.toLocaleString()}</span>
             </div>
-            <div class="stat-row">
-                <span>Duration:</span>
-                <span>${Math.round(duration / 60)} minutes</span>
+            <div class="stat-row cyber-row">
+                <span>Total Duration:</span>
+                <span class="neon-text">${Math.round(duration / 60)}m</span>
             </div>
-            <div class="stat-row">
-                <span>Score:</span>
-                <span>${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
+            <div class="stat-row cyber-row">
+                <span>Posture Score:</span>
+                <span class="neon-text">${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
             </div>
-            <div class="stat-row">
-                <span>Sitting Time:</span>
-                <span>${Math.round((session.sitDuration || 0) / 60)} minutes</span>
+            <div class="stat-row cyber-row">
+                <span>Time Sitting:</span>
+                <span class="neon-text">${Math.round((session.sitDuration || 0) / 60)}m</span>
             </div>
-            <div class="stat-row">
-                <span>Buzzer Activations:</span>
-                <span>${session.buzzerCount || 0}</span>
+            <div class="stat-row cyber-row">
+                <span>Alerts Triggered:</span>
+                <span class="neon-text">${session.buzzerCount || 0}</span>
             </div>
+            <button onclick="deleteSession(event, '${sessionId}')" class="btn btn-danger" style="margin-top: 20px; width: 100%;">Delete Session</button>
         </div>
     `;
 
@@ -436,41 +486,29 @@ function closeSessionModal() {
     document.getElementById('sessionModal').style.display = 'none';
 }
 
-// Close modal when clicking outside
 window.onclick = function(event) {
     const modal = document.getElementById('sessionModal');
     const changePasswordModal = document.getElementById('changePasswordModal');
     const deleteAccountModal = document.getElementById('deleteAccountModal');
     
-    if (event.target == modal) {
-        modal.style.display = 'none';
-    }
-    if (event.target == changePasswordModal) {
-        closeChangePassword();
-    }
-    if (event.target == deleteAccountModal) {
-        closeDeleteAccount();
-    }
+    if (event.target == modal) { modal.style.display = 'none'; }
+    if (event.target == changePasswordModal) { closeChangePassword(); }
+    if (event.target == deleteAccountModal) { closeDeleteAccount(); }
     
-    // Close user dropdown when clicking outside
     const userDropdown = document.getElementById('userDropdown');
     const userMenuBtn = document.querySelector('.user-menu-btn');
-    if (!userMenuBtn.contains(event.target) && !userDropdown.contains(event.target)) {
+    if (userMenuBtn && !userMenuBtn.contains(event.target) && !userDropdown.contains(event.target)) {
         userDropdown.classList.remove('show');
     }
 }
 
-// User Menu Functions
 function toggleUserMenu() {
-    const dropdown = document.getElementById('userDropdown');
-    dropdown.classList.toggle('show');
+    document.getElementById('userDropdown').classList.toggle('show');
 }
 
-// Change Password Functions
 function showChangePassword() {
     document.getElementById('userDropdown').classList.remove('show');
     document.getElementById('changePasswordModal').style.display = 'flex';
-    // Clear previous inputs and messages
     document.getElementById('currentPassword').value = '';
     document.getElementById('newPassword').value = '';
     document.getElementById('confirmNewPassword').value = '';
@@ -489,67 +527,46 @@ async function changePassword() {
     const errorDiv = document.getElementById('changePasswordError');
     const successDiv = document.getElementById('changePasswordSuccess');
     
-    // Clear previous messages
     errorDiv.classList.remove('show');
     successDiv.classList.remove('show');
     
-    // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
-        errorDiv.textContent = 'Please fill in all fields';
+        errorDiv.textContent = 'Please fill in all fields.';
         errorDiv.classList.add('show');
         return;
     }
     
     if (newPassword.length < 6) {
-        errorDiv.textContent = 'New password must be at least 6 characters';
+        errorDiv.textContent = 'New password must be at least 6 characters.';
         errorDiv.classList.add('show');
         return;
     }
     
     if (newPassword !== confirmPassword) {
-        errorDiv.textContent = 'New passwords do not match';
+        errorDiv.textContent = 'New passwords do not match.';
         errorDiv.classList.add('show');
         return;
     }
     
     try {
-        // Re-authenticate user with current password
-        const credential = firebase.auth.EmailAuthProvider.credential(
-            currentUser.email,
-            currentPassword
-        );
-        
+        const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, currentPassword);
         await currentUser.reauthenticateWithCredential(credential);
-        
-        // Update password
         await currentUser.updatePassword(newPassword);
         
         successDiv.textContent = 'Password updated successfully!';
         successDiv.classList.add('show');
-        
-        // Close modal after 2 seconds
-        setTimeout(() => {
-            closeChangePassword();
-        }, 2000);
-        
+        setTimeout(() => { closeChangePassword(); }, 2000);
     } catch (error) {
-        console.error('Error changing password:', error);
-        if (error.code === 'auth/wrong-password') {
-            errorDiv.textContent = 'Current password is incorrect';
-        } else if (error.code === 'auth/weak-password') {
-            errorDiv.textContent = 'New password is too weak';
-        } else {
-            errorDiv.textContent = 'Error updating password: ' + error.message;
-        }
+        if (error.code === 'auth/wrong-password') { errorDiv.textContent = 'Current password is incorrect.'; }
+        else if (error.code === 'auth/weak-password') { errorDiv.textContent = 'New password is too weak.'; }
+        else { errorDiv.textContent = 'Error updating password: ' + error.message; }
         errorDiv.classList.add('show');
     }
 }
 
-// Delete Account Functions
 function showDeleteAccount() {
     document.getElementById('userDropdown').classList.remove('show');
     document.getElementById('deleteAccountModal').style.display = 'flex';
-    // Clear previous inputs and messages
     document.getElementById('deleteAccountPassword').value = '';
     document.getElementById('deleteAccountConfirm').checked = false;
     document.getElementById('deleteAccountError').classList.remove('show');
@@ -564,73 +581,44 @@ async function deleteAccount() {
     const confirmed = document.getElementById('deleteAccountConfirm').checked;
     const errorDiv = document.getElementById('deleteAccountError');
     
-    // Clear previous messages
     errorDiv.classList.remove('show');
     
-    // Validation
     if (!password) {
-        errorDiv.textContent = 'Please enter your password';
+        errorDiv.textContent = 'Please enter your password.';
         errorDiv.classList.add('show');
         return;
     }
     
     if (!confirmed) {
-        errorDiv.textContent = 'Please confirm that you understand this action';
+        errorDiv.textContent = 'Please confirm that you understand this action.';
         errorDiv.classList.add('show');
         return;
     }
     
-    // Final confirmation
-    if (!confirm('Are you absolutely sure? This cannot be undone!')) {
-        return;
-    }
+    if (!confirm('Are you absolutely sure? This cannot be undone!')) { return; }
     
     try {
-        // Re-authenticate user
-        const credential = firebase.auth.EmailAuthProvider.credential(
-            currentUser.email,
-            password
-        );
-        
+        const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
         await currentUser.reauthenticateWithCredential(credential);
-        
         const userId = currentUser.uid;
         
-        // Delete user data from Firestore
-        // 1. Delete all sessions and their readings
-        const sessionsSnapshot = await db.collection('sessions')
-            .where('userId', '==', userId)
-            .get();
-        
+        const sessionsSnapshot = await db.collection('sessions').where('userId', '==', userId).get();
         for (const sessionDoc of sessionsSnapshot.docs) {
-            // Delete all readings in this session
             const readingsSnapshot = await sessionDoc.ref.collection('readings').get();
             const readingBatch = db.batch();
             readingsSnapshot.docs.forEach(doc => readingBatch.delete(doc.ref));
             await readingBatch.commit();
-            
-            // Delete session
             await sessionDoc.ref.delete();
         }
         
-        // 2. Delete user profile
         await db.collection('users').doc(userId).delete();
-        
-        // 3. Delete Firebase Authentication account
         await currentUser.delete();
         
-        // User will be automatically logged out
-        alert('Your account has been deleted successfully');
-        
+        alert('Your account has been deleted successfully.');
     } catch (error) {
-        console.error('Error deleting account:', error);
-        if (error.code === 'auth/wrong-password') {
-            errorDiv.textContent = 'Password is incorrect';
-        } else if (error.code === 'auth/requires-recent-login') {
-            errorDiv.textContent = 'Please log out and log back in, then try again';
-        } else {
-            errorDiv.textContent = 'Error deleting account: ' + error.message;
-        }
+        if (error.code === 'auth/wrong-password') { errorDiv.textContent = 'Password is incorrect.'; }
+        else if (error.code === 'auth/requires-recent-login') { errorDiv.textContent = 'Please log out and log back in, then try again.'; }
+        else { errorDiv.textContent = 'Error deleting account: ' + error.message; }
         errorDiv.classList.add('show');
     }
 }
