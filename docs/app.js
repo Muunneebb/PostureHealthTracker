@@ -443,13 +443,13 @@ function loadAnalytics() {
             datasets: [{
                 label: 'Session Score (%)',
                 data: scores.reverse(),
-                borderColor: '#7E3EAC',
-                backgroundColor: 'rgba(126, 62, 172, 0.15)',
+                borderColor: '#2f67b3',
+                backgroundColor: 'rgba(47, 103, 179, 0.12)',
                 borderWidth: 2,
                 tension: 0.1, 
                 fill: true,
                 pointRadius: 4,
-                pointBackgroundColor: '#7E3EAC',
+                pointBackgroundColor: '#2f67b3',
                 pointBorderColor: '#ffffff'
             }]
         },
@@ -458,17 +458,17 @@ function loadAnalytics() {
             maintainAspectRatio: true,
             plugins: {
                 title: { display: false },
-                legend: { labels: { color: '#ffffff', font: { family: 'Segoe UI', size: 14 } } }
+                legend: { labels: { color: '#385985', font: { family: 'Source Sans 3', size: 14 } } }
             },
             scales: {
                 y: { 
                     min: 0, max: 100, 
-                    ticks: { color: '#94a3b8', font: { family: 'Segoe UI' } }, 
-                    grid: { color: '#2d2d35' } 
+                    ticks: { color: '#60789f', font: { family: 'Source Sans 3' } }, 
+                    grid: { color: '#dce5f3' } 
                 },
                 x: { 
-                    ticks: { color: '#94a3b8', font: { family: 'Segoe UI' } }, 
-                    grid: { color: '#2d2d35' } 
+                    ticks: { color: '#60789f', font: { family: 'Source Sans 3' } }, 
+                    grid: { color: '#dce5f3' } 
                 }
             }
         }
