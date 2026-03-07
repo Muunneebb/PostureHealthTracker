@@ -16,6 +16,26 @@ let currentUser = null;
 let chart = null;
 let activeSessionInterval = null; 
 let currentActiveSessionId = null; 
+const POSTURE_ALERT_SCORE_PENALTY = 0.01;
+
+function getSessionScore(session) {
+    const postureAlerts = session?.postureAlertCount ?? session?.buzzerCount ?? 0;
+    const rawScore = session?.sessionScore;
+
+    // Legacy fallback: old sessions were initialized at 0 with zero alerts.
+    if (typeof rawScore === 'number') {
+        if (rawScore <= 0 && postureAlerts === 0) {
+            return 1.0;
+        }
+        return Math.max(0, Math.min(1, rawScore));
+    }
+
+    if (postureAlerts > 0) {
+        return Math.max(0, 1.0 - (postureAlerts * POSTURE_ALERT_SCORE_PENALTY));
+    }
+
+    return 1.0;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     auth.onAuthStateChanged(user => {
@@ -169,9 +189,11 @@ async function startNewSession() {
         startTime: new Date(),
         endTime: null,
         readings: [],
-        sessionScore: 0,
+        sessionScore: 1.0,
         sitDuration: 0,
-        buzzerCount: 0
+        buzzerCount: 0,
+        postureAlertCount: 0,
+        breakAlertCount: 0
     };
 
     try {
@@ -272,6 +294,7 @@ async function loadUserData() {
         let totalSessions = 0;
         let totalSitting = 0;
         let totalScore = 0;
+        let scoreSampleCount = 0;
         let recentSessions = [];
         let activeSession = null;
 
@@ -286,19 +309,35 @@ async function loadUserData() {
             const startTime = session.startTime.toDate();
             const endTime = session.endTime ? session.endTime.toDate() : new Date();
             const duration = (endTime - startTime) / 1000;
+            const normalizedScore = getSessionScore(session);
             
             if (session.endTime) {
                 totalSessions++;
                 totalSitting += session.sitDuration || 0;
-                totalScore += session.sessionScore || 0;
+                totalScore += normalizedScore;
+                scoreSampleCount++;
             }
 
             if (!session.endTime && !activeSession) {
-                activeSession = { ...session, id: doc.id, startTime: startTime, duration: duration };
+                activeSession = {
+                    ...session,
+                    sessionScore: normalizedScore,
+                    id: doc.id,
+                    startTime: startTime,
+                    duration: duration,
+                };
+                totalScore += normalizedScore;
+                scoreSampleCount++;
             }
 
             if (session.endTime && recentSessions.length < 20) {
-                recentSessions.push({ ...session, id: doc.id, startTime: startTime, duration: duration });
+                recentSessions.push({
+                    ...session,
+                    sessionScore: normalizedScore,
+                    id: doc.id,
+                    startTime: startTime,
+                    duration: duration,
+                });
             }
         });
 
@@ -316,7 +355,7 @@ async function loadUserData() {
             activeCard.innerHTML = `
                 <div class="session-card-header">
                     <span class="session-card-title">Session Started at ${activeSession.startTime.toLocaleTimeString()}</span>
-                    <span class="session-card-score ${activeScoreClass}">${((activeSession.sessionScore || 0) * 100).toFixed(0)}%</span>
+                    <span class="session-card-score ${activeScoreClass}">${(getSessionScore(activeSession) * 100).toFixed(0)}%</span>
                 </div>
                 <div class="session-card-details">
                     <div>Status: Active</div>
@@ -345,7 +384,7 @@ async function loadUserData() {
                 card.innerHTML = `
                     <div class="session-card-header">
                         <span class="session-card-title">${session.startTime.toLocaleDateString()} at ${session.startTime.toLocaleTimeString()}</span>
-                        <span class="session-card-score ${scoreClass}">${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
+                        <span class="session-card-score ${scoreClass}">${(getSessionScore(session) * 100).toFixed(0)}%</span>
                     </div>
                     <div class="session-card-details">
                         <div>Duration: ${Math.round(session.duration / 60)}m</div>
@@ -365,7 +404,7 @@ async function loadUserData() {
         document.getElementById('statTotalSessions').textContent = totalSessions;
         document.getElementById('statTotalSitting').textContent = Math.floor(totalSitting / 3600) + 'h ' + Math.floor((totalSitting % 3600) / 60) + 'm';
         
-        const avgScore = totalSessions ? (totalScore / totalSessions * 100).toFixed(0) : 0;
+        const avgScore = scoreSampleCount ? (totalScore / scoreSampleCount * 100).toFixed(0) : 0;
         document.getElementById('statAvgScore').textContent = avgScore + '%';
 
         window.userRecentSessions = recentSessions;
@@ -388,7 +427,7 @@ function loadAnalytics() {
     document.getElementById('analyticsChart').style.display = 'block';
 
     const sessions = window.userRecentSessions;
-    const scores = sessions.map(s => s.sessionScore * 100);
+    const scores = sessions.map(s => getSessionScore(s) * 100);
     const dates = sessions.map(s => s.startTime.toLocaleDateString());
 
     const ctx = document.getElementById('analyticsChart').getContext('2d');
@@ -465,7 +504,7 @@ function showSessionDetail(sessionId, session) {
             </div>
             <div class="stat-row cyber-row">
                 <span>Posture Score:</span>
-                <span class="neon-text">${((session.sessionScore || 0) * 100).toFixed(0)}%</span>
+                <span class="neon-text">${(getSessionScore(session) * 100).toFixed(0)}%</span>
             </div>
             <div class="stat-row cyber-row">
                 <span>Time Sitting:</span>

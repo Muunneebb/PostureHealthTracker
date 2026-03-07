@@ -139,6 +139,21 @@ def get_take_break_reasons(sess):
     return reasons
 
 
+def get_effective_session_score(sess):
+    """Return a normalized score and repair legacy zero-initialized rows in memory."""
+    posture_alerts = (
+        sess.posture_alert_count
+        if sess.posture_alert_count is not None
+        else (sess.buzzer_count or 0)
+    )
+    score = sess.session_score
+    if score is None:
+        return 1.0
+    if score <= 0 and (posture_alerts or 0) == 0:
+        return 1.0
+    return max(0.0, min(1.0, score))
+
+
 def ensure_session_schema_columns():
     """Add missing Session columns for existing SQLite databases."""
     inspector = inspect(db.engine)
@@ -161,9 +176,14 @@ def ensure_session_schema_columns():
             if column_name not in existing_columns:
                 connection.execute(text(statement))
         
-        # For existing rows without session_score, set them to 1.0
+        # Normalize legacy rows that were incorrectly initialized at 0 score.
         if 'session_score' in existing_columns:
-            connection.execute(text('UPDATE session SET session_score = 1.0 WHERE session_score IS NULL'))
+            connection.execute(text(
+                'UPDATE session '
+                'SET session_score = 1.0 '
+                'WHERE session_score IS NULL '
+                'OR (session_score = 0 AND COALESCE(posture_alert_count, 0) = 0 AND COALESCE(buzzer_count, 0) = 0)'
+            ))
 
 
 # Routes
@@ -240,7 +260,7 @@ def dashboard():
     stats = {
         'total_sessions': len(sessions),
         'total_sitting_time': sum(s.sitting_duration or 0 for s in sessions),
-        'avg_session_score': sum(s.session_score if s.session_score is not None else 1.0 for s in sessions) / max(len(sessions), 1),
+        'avg_session_score': sum(get_effective_session_score(s) for s in sessions) / max(len(sessions), 1),
         'posture_alerts': sum(s.posture_alert_count or 0 for s in sessions),
         'break_alerts': sum(s.break_alert_count or 0 for s in sessions),
         'break_alerts_triggered': sum(1 for s in sessions if s.break_alert_triggered),
@@ -283,7 +303,7 @@ def view_session(session_id):
         'duration': sess.get_duration(),
         'sitting_duration': sess.sitting_duration,
         'sitting_percentage': sess.get_sitting_percentage(),
-        'session_score': sess.session_score if sess.session_score is not None else 1.0,
+        'session_score': get_effective_session_score(sess),
         'buzzer_count': sess.buzzer_count,
         'posture_alert_count': sess.posture_alert_count or 0,
         'break_alert_count': sess.break_alert_count or 0,
@@ -329,7 +349,8 @@ def start_session():
     return jsonify({
         'success': True,
         'session_id': new_session.id,
-        'start_time': new_session.start_time.isoformat()
+        'start_time': new_session.start_time.isoformat(),
+        'session_score': 1.0,
     }), 201
 
 
@@ -461,7 +482,7 @@ def get_session_stats(session_id):
         'duration': sess.get_duration(),
         'sitting_duration': sess.sitting_duration,
         'sitting_percentage': sess.get_sitting_percentage(),
-        'session_score': sess.session_score if sess.session_score is not None else 1.0,
+        'session_score': get_effective_session_score(sess),
         'buzzer_count': sess.buzzer_count,
         'posture_alert_count': sess.posture_alert_count or 0,
         'break_alert_count': sess.break_alert_count or 0,
@@ -534,7 +555,7 @@ def get_user_sessions():
             'end_time': s.end_time.isoformat() if s.end_time else None,
             'duration': s.get_duration(),
             'sitting_duration': s.sitting_duration,
-            'session_score': s.session_score if s.session_score is not None else 1.0,
+            'session_score': get_effective_session_score(s),
             'buzzer_count': s.buzzer_count,
             'posture_alert_count': s.posture_alert_count or 0,
             'break_alert_count': s.break_alert_count or 0,
