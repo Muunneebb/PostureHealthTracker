@@ -3,6 +3,8 @@ class SessionMonitor {
     constructor() {
         this.sessionId = localStorage.getItem('currentSessionId');
         this.isMonitoring = false;
+        this.alertPollingInterval = null;
+        this.takeBreakAlertShown = false;
     }
 
     async startMonitoring() {
@@ -11,11 +13,18 @@ class SessionMonitor {
             return;
         }
 
+        if (this.isMonitoring) {
+            return;
+        }
+
         this.isMonitoring = true;
         console.log('Session monitoring started for session:', this.sessionId);
 
-        // Real-time monitoring would happen here
-        // This would connect to the sensor data stream
+        // Poll session stats periodically so alerts work for external sensor senders.
+        await this.checkForAlerts();
+        this.alertPollingInterval = setInterval(() => {
+            this.checkForAlerts();
+        }, 10000);
     }
 
     async sendReading(reading) {
@@ -47,22 +56,42 @@ class SessionMonitor {
     async checkForAlerts() {
         try {
             const response = await fetch(`/api/session/${this.sessionId}/stats`);
-            const stats = await response.json();
-
-            if (stats.break_alert) {
-                this.showBreakAlert();
+            if (!response.ok) {
+                return;
             }
 
-            if (stats.excessive_buzzer_alert) {
-                this.showBuzzerAlert();
+            const stats = await response.json();
+
+            if (stats.take_break_alert) {
+                if (!this.takeBreakAlertShown) {
+                    this.showTakeBreakAlert(stats.take_break_reasons || []);
+                    this.takeBreakAlertShown = true;
+                }
+            } else {
+                this.takeBreakAlertShown = false;
             }
         } catch (error) {
             console.error('Error checking stats:', error);
         }
     }
 
+    showTakeBreakAlert(reasons = []) {
+        const reasonText = reasons.length > 0 ? reasons.join(', ') : 'session thresholds';
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('PostureHealthTracker', {
+                title: 'Time to Take a Break',
+                body: `Break recommended due to: ${reasonText}`,
+                icon: '/static/img/icon.png',
+                tag: 'take-break-alert'
+            });
+        }
+
+        console.warn(`TAKE BREAK ALERT: ${reasonText}`);
+    }
+
     showBreakAlert() {
-        if (!Notification.permission === 'granted') {
+        if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('PostureHealthTracker', {
                 title: 'Time for a Break!',
                 body: 'You have been sitting for more than 2 hours. Please take a break.',
@@ -74,15 +103,15 @@ class SessionMonitor {
     }
 
     showBuzzerAlert() {
-        if (!Notification.permission === 'granted') {
+        if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('PostureHealthTracker', {
                 title: 'Excessive Posture Issues!',
-                body: 'The buzzer has triggered 5 times. Please check your posture.',
+                body: 'The buzzer has triggered 3 times. Please check your posture.',
                 icon: '/static/img/icon.png',
                 tag: 'buzzer-alert'
             });
         }
-        console.warn('BUZZER ALERT: Buzzer triggered 5 times');
+        console.warn('BUZZER ALERT: Buzzer triggered 3 times');
     }
 
     async endSession() {
@@ -99,6 +128,11 @@ class SessionMonitor {
                 localStorage.removeItem('currentSessionId');
                 this.sessionId = null;
                 this.isMonitoring = false;
+                this.takeBreakAlertShown = false;
+                if (this.alertPollingInterval) {
+                    clearInterval(this.alertPollingInterval);
+                    this.alertPollingInterval = null;
+                }
                 console.log('Session ended successfully');
             }
         } catch (error) {
@@ -111,17 +145,14 @@ class SessionMonitor {
 let monitor;
 document.addEventListener('DOMContentLoaded', () => {
     monitor = new SessionMonitor();
+
+    if (monitor.sessionId) {
+        monitor.startMonitoring();
+    }
     
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
-    }
-});
-
-// End session when leaving the page
-window.addEventListener('beforeunload', () => {
-    if (monitor && monitor.sessionId) {
-        monitor.endSession();
     }
 });
 

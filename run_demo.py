@@ -162,7 +162,7 @@ if resp.status_code == 200:
     print(f"  ├─ Average Score: {stats['session_score']:.2f}")
     print(f"  ├─ Buzzer Count: {stats['buzzer_count']}")
     print(f"  ├─ Break Alert: {'YES (sat 2+ hours)' if stats['break_alert'] else 'No'}")
-    print(f"  └─ Buzzer Alert: {'YES (5+ activations)' if stats['excessive_buzzer_alert'] else 'No'}")
+    print(f"  └─ Buzzer Alert: {'YES (3+ activations)' if stats['excessive_buzzer_alert'] else 'No'}")
 
 print("\n" + "=" * 70)
 print("✓ DEMO COMPLETE!")

@@ -5,12 +5,18 @@ from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import inspect, text
 import sqlite3
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posture_tracker.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Each posture alert (buzzer trigger) reduces the session score by 1%.
+POSTURE_ALERT_SCORE_PENALTY = 0.01
+BREAK_INTERVAL_SECONDS = 7200
+BUZZER_BREAK_ALERT_THRESHOLD = 3
 
 db = SQLAlchemy(app)
 
@@ -37,8 +43,12 @@ class Session(db.Model):
     end_time = db.Column(db.DateTime)
     total_duration = db.Column(db.Integer)  # in seconds
     sitting_duration = db.Column(db.Integer)  # in seconds
-    session_score = db.Column(db.Float)  # score based on sensor readings
+    session_score = db.Column(db.Float, default=1.0)  # starts at 100%, reduced by posture alerts
     buzzer_count = db.Column(db.Integer, default=0)
+    break_count = db.Column(db.Integer, default=0)
+    last_break_time = db.Column(db.DateTime)
+    next_break_time = db.Column(db.DateTime)
+    continuous_sitting_seconds = db.Column(db.Integer, default=0)
     break_alert_triggered = db.Column(db.Boolean, default=False)
     excessive_buzzer_alert = db.Column(db.Boolean, default=False)
     readings = db.relationship('Reading', backref='session', lazy=True, cascade='all, delete-orphan')
@@ -54,7 +64,14 @@ class Session(db.Model):
         duration = self.get_duration()
         if duration == 0:
             return 0
-        return (self.sitting_duration / duration) * 100
+        return ((self.sitting_duration or 0) / duration) * 100
+
+    def get_next_break_due(self):
+        """Get the next break due timestamp based on the last break or session start."""
+        anchor = self.last_break_time or self.start_time
+        if not anchor:
+            return None
+        return anchor + timedelta(seconds=BREAK_INTERVAL_SECONDS)
 
 
 class Reading(db.Model):
@@ -79,6 +96,60 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def serialize_datetime(value):
+    """Serialize datetime values for API responses."""
+    return value.isoformat() if value else None
+
+
+def serialize_reading(reading):
+    """Serialize a reading row for API responses."""
+    if not reading:
+        return None
+
+    return {
+        'id': reading.id,
+        'timestamp': serialize_datetime(reading.timestamp),
+        'pitch': reading.pitch,
+        'roll': reading.roll,
+        'fsr_left': reading.fsr_left,
+        'fsr_right': reading.fsr_right,
+        'fsr_center': reading.fsr_center,
+        'stress_score': reading.stress_score,
+        'is_seated': reading.is_seated,
+        'buzzer_triggered': reading.buzzer_triggered,
+    }
+
+
+def get_take_break_reasons(sess):
+    """Return alert reasons for prompting a break."""
+    reasons = []
+    if (sess.buzzer_count or 0) >= BUZZER_BREAK_ALERT_THRESHOLD:
+        reasons.append('buzzer_count')
+    if (sess.continuous_sitting_seconds or 0) >= BREAK_INTERVAL_SECONDS:
+        reasons.append('continuous_sitting')
+    return reasons
+
+
+def ensure_session_schema_columns():
+    """Add missing Session columns for existing SQLite databases."""
+    inspector = inspect(db.engine)
+    if 'session' not in inspector.get_table_names():
+        return
+
+    existing_columns = {column['name'] for column in inspector.get_columns('session')}
+    alter_statements = {
+        'break_count': 'ALTER TABLE session ADD COLUMN break_count INTEGER DEFAULT 0',
+        'last_break_time': 'ALTER TABLE session ADD COLUMN last_break_time DATETIME',
+        'next_break_time': 'ALTER TABLE session ADD COLUMN next_break_time DATETIME',
+        'continuous_sitting_seconds': 'ALTER TABLE session ADD COLUMN continuous_sitting_seconds INTEGER DEFAULT 0',
+    }
+
+    with db.engine.begin() as connection:
+        for column_name, statement in alter_statements.items():
+            if column_name not in existing_columns:
+                connection.execute(text(statement))
 
 
 # Routes
@@ -150,16 +221,32 @@ def logout():
 def dashboard():
     user_id = session['user_id']
     sessions = Session.query.filter_by(user_id=user_id).order_by(Session.start_time.desc()).all()
+    active_session = Session.query.filter_by(user_id=user_id, end_time=None).order_by(Session.start_time.desc()).first()
     
     stats = {
         'total_sessions': len(sessions),
         'total_sitting_time': sum(s.sitting_duration or 0 for s in sessions),
-        'avg_session_score': sum(s.session_score or 0 for s in sessions) / max(len(sessions), 1),
+        'avg_session_score': sum(s.session_score if s.session_score is not None else 1.0 for s in sessions) / max(len(sessions), 1),
         'break_alerts': sum(1 for s in sessions if s.break_alert_triggered),
         'buzzer_alerts': sum(1 for s in sessions if s.excessive_buzzer_alert),
     }
 
-    return render_template('dashboard.html', sessions=sessions, stats=stats)
+    active_session_data = None
+    if active_session:
+        active_session_data = {
+            'id': active_session.id,
+            'break_count': active_session.break_count or 0,
+            'last_break_time': active_session.last_break_time,
+            'next_break_time': active_session.next_break_time or active_session.get_next_break_due(),
+            'take_break_reasons': get_take_break_reasons(active_session),
+        }
+
+    return render_template(
+        'dashboard.html',
+        sessions=sessions,
+        stats=stats,
+        active_session=active_session_data,
+    )
 
 
 @app.route('/session/<int:session_id>')
@@ -180,21 +267,15 @@ def view_session(session_id):
         'duration': sess.get_duration(),
         'sitting_duration': sess.sitting_duration,
         'sitting_percentage': sess.get_sitting_percentage(),
-        'session_score': sess.session_score,
+        'session_score': sess.session_score if sess.session_score is not None else 1.0,
         'buzzer_count': sess.buzzer_count,
+        'break_count': sess.break_count or 0,
+        'last_break_time': serialize_datetime(sess.last_break_time),
+        'next_break_time': serialize_datetime(sess.next_break_time or sess.get_next_break_due()),
+        'continuous_sitting_seconds': sess.continuous_sitting_seconds or 0,
         'break_alert': sess.break_alert_triggered,
         'excessive_buzzer_alert': sess.excessive_buzzer_alert,
-        'readings': [{
-            'timestamp': r.timestamp.isoformat(),
-            'pitch': r.pitch,
-            'roll': r.roll,
-            'fsr_left': r.fsr_left,
-            'fsr_right': r.fsr_right,
-            'fsr_center': r.fsr_center,
-            'stress_score': r.stress_score,
-            'is_seated': r.is_seated,
-            'buzzer_triggered': r.buzzer_triggered,
-        } for r in readings]
+        'readings': [serialize_reading(r) for r in readings]
     }
 
     return render_template('session_detail.html', session=session_data)
@@ -209,8 +290,18 @@ def start_session():
     active = Session.query.filter_by(user_id=user_id, end_time=None).first()
     if active:
         active.end_time = datetime.utcnow()
-    
-    new_session = Session(user_id=user_id)
+        active.total_duration = active.get_duration()
+
+    session_start = datetime.utcnow()
+    new_session = Session(
+        user_id=user_id,
+        start_time=session_start,
+        sitting_duration=0,
+        session_score=1.0,
+        break_count=0,
+        continuous_sitting_seconds=0,
+        next_break_time=session_start + timedelta(seconds=BREAK_INTERVAL_SECONDS),
+    )
     db.session.add(new_session)
     db.session.commit()
 
@@ -231,6 +322,9 @@ def add_reading(session_id):
         return jsonify({'error': 'Session not found'}), 404
 
     data = request.get_json()
+    now = datetime.utcnow()
+    is_seated = data.get('is_seated', False)
+    buzzer_triggered = data.get('buzzer_triggered', False)
 
     reading = Reading(
         session_id=session_id,
@@ -240,31 +334,41 @@ def add_reading(session_id):
         fsr_right=data.get('fsr_right'),
         fsr_center=data.get('fsr_center'),
         stress_score=data.get('stress_score'),
-        is_seated=data.get('is_seated', False),
-        buzzer_triggered=data.get('buzzer_triggered', False)
+        is_seated=is_seated,
+        buzzer_triggered=buzzer_triggered
     )
 
-    # Update session sitting duration
-    if data.get('is_seated'):
+    if sess.session_score is None:
+        sess.session_score = 1.0
+    if sess.break_count is None:
+        sess.break_count = 0
+    if sess.continuous_sitting_seconds is None:
+        sess.continuous_sitting_seconds = 0
+
+    # Update sitting and break tracking.
+    if is_seated:
         sess.sitting_duration = (sess.sitting_duration or 0) + 1
+        sess.continuous_sitting_seconds += 1
+    else:
+        if sess.continuous_sitting_seconds > 0:
+            sess.break_count += 1
+            sess.last_break_time = now
+        sess.continuous_sitting_seconds = 0
+
+    # Update next break due time from last break (or session start if no break yet).
+    sess.next_break_time = sess.get_next_break_due()
 
     # Update buzzer count
-    if data.get('buzzer_triggered'):
+    if buzzer_triggered:
         sess.buzzer_count = (sess.buzzer_count or 0) + 1
-        
-        # Alert if buzzer triggered 5 times
-        if sess.buzzer_count >= 5:
+        sess.session_score = max(0.0, 1.0 - (sess.buzzer_count * POSTURE_ALERT_SCORE_PENALTY))
+
+        # Alert if buzzer triggered 3 times.
+        if sess.buzzer_count >= BUZZER_BREAK_ALERT_THRESHOLD:
             sess.excessive_buzzer_alert = True
 
-    # Update session score
-    if data.get('stress_score') is not None:
-        scores = [r.stress_score for r in sess.readings if r.stress_score is not None]
-        scores.append(data.get('stress_score'))
-        sess.session_score = sum(scores) / len(scores) if scores else 0
-
-    # Check for 2 hour break alert (7200 seconds)
-    duration = (datetime.utcnow() - sess.start_time).total_seconds()
-    if duration > 7200 and not sess.break_alert_triggered:
+    # Track whether a 2-hour continuous sitting alert happened in this session.
+    if sess.continuous_sitting_seconds >= BREAK_INTERVAL_SECONDS:
         sess.break_alert_triggered = True
 
     db.session.add(reading)
@@ -303,15 +407,76 @@ def get_session_stats(session_id):
     if not sess:
         return jsonify({'error': 'Session not found'}), 404
 
+    next_break_time = sess.next_break_time or sess.get_next_break_due()
+    take_break_reasons = get_take_break_reasons(sess)
+    reading_count = Reading.query.filter_by(session_id=session_id).count()
+    latest_reading = (
+        Reading.query
+        .filter_by(session_id=session_id)
+        .order_by(Reading.id.desc())
+        .first()
+    )
+
     return jsonify({
         'id': sess.id,
         'duration': sess.get_duration(),
         'sitting_duration': sess.sitting_duration,
         'sitting_percentage': sess.get_sitting_percentage(),
-        'session_score': sess.session_score,
+        'session_score': sess.session_score if sess.session_score is not None else 1.0,
         'buzzer_count': sess.buzzer_count,
+        'break_count': sess.break_count or 0,
+        'last_break_time': serialize_datetime(sess.last_break_time),
+        'next_break_time': serialize_datetime(next_break_time),
+        'continuous_sitting_seconds': sess.continuous_sitting_seconds or 0,
+        'take_break_alert': len(take_break_reasons) > 0,
+        'take_break_reasons': take_break_reasons,
+        'reading_count': reading_count,
+        'latest_reading': serialize_reading(latest_reading),
         'break_alert': sess.break_alert_triggered,
         'excessive_buzzer_alert': sess.excessive_buzzer_alert
+    }), 200
+
+
+@app.route('/api/session/<int:session_id>/readings', methods=['GET'])
+@login_required
+def get_session_readings(session_id):
+    """Fetch readings for real-time UI updates.
+
+    Query params:
+    - since_id: return rows with id > since_id (incremental polling)
+    - limit: max rows to return (default 100, max 500)
+    - latest: when true, return the most recent `limit` rows
+    """
+    user_id = session['user_id']
+    sess = Session.query.filter_by(id=session_id, user_id=user_id).first()
+
+    if not sess:
+        return jsonify({'error': 'Session not found'}), 404
+
+    since_id = request.args.get('since_id', type=int)
+    limit = request.args.get('limit', default=100, type=int)
+    latest = request.args.get('latest', default='false').lower() in {'1', 'true', 'yes'}
+
+    limit = min(max(limit, 1), 500)
+
+    query = Reading.query.filter_by(session_id=session_id)
+    if since_id is not None:
+        query = query.filter(Reading.id > since_id)
+
+    if latest and since_id is None:
+        readings = query.order_by(Reading.id.desc()).limit(limit).all()
+        readings.reverse()
+    else:
+        readings = query.order_by(Reading.id.asc()).limit(limit).all()
+
+    reading_payload = [serialize_reading(r) for r in readings]
+    last_id = reading_payload[-1]['id'] if reading_payload else (since_id or 0)
+
+    return jsonify({
+        'session_id': sess.id,
+        'count': len(reading_payload),
+        'last_id': last_id,
+        'readings': reading_payload,
     }), 200
 
 
@@ -328,8 +493,11 @@ def get_user_sessions():
             'end_time': s.end_time.isoformat() if s.end_time else None,
             'duration': s.get_duration(),
             'sitting_duration': s.sitting_duration,
-            'session_score': s.session_score,
+            'session_score': s.session_score if s.session_score is not None else 1.0,
             'buzzer_count': s.buzzer_count,
+            'break_count': s.break_count or 0,
+            'last_break_time': serialize_datetime(s.last_break_time),
+            'next_break_time': serialize_datetime(s.next_break_time or s.get_next_break_due()),
             'break_alert': s.break_alert_triggered,
             'excessive_buzzer_alert': s.excessive_buzzer_alert
         } for s in sessions]
@@ -339,4 +507,5 @@ def get_user_sessions():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        ensure_session_schema_columns()
     app.run(debug=True, host='0.0.0.0', port=5000)

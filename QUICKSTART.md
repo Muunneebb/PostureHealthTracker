@@ -283,7 +283,7 @@ To connect your actual sensor hardware:
 - **Total Sitting Time**: Aggregated hours
 - **Avg Session Score**: Average stress score
 - **Break Alerts**: Times user exceeded 2 hours
-- **Buzzer Alerts**: Times buzzer triggered 5+ times
+- **Buzzer Alerts**: Times buzzer triggered 3+ times
 
 ### Session Table
 Click "View" on any session to see:

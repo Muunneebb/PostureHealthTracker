@@ -6,7 +6,125 @@
 <div class="dashboard">
     <div class="dashboard-header">
         <h2>Your Dashboard</h2>
-        <button id="startSessionBtn" class="btn btn-primary">Start New Session</button>
+        <div class="session-actions">
+            <button id="startSessionBtn" class="btn btn-primary">Start New Session</button>
+            <button id="endSessionBtn" class="btn btn-secondary" {% if not active_session %}style="display:none;"{% endif %}>End Active Session</button>
+        </div>
+    </div>
+
+    <div class="sessions-container break-tracker-panel">
+        <h3>Active Session Break Tracker</h3>
+        {% if active_session %}
+        <div class="break-tracker-grid">
+            <div class="overview-card">
+                <h3>Breaks Taken</h3>
+                <p class="value" id="breakCountValue">{{ active_session.break_count }}</p>
+            </div>
+            <div class="overview-card">
+                <h3>Last Break</h3>
+                <p class="value break-time" id="lastBreakTime">
+                    {% if active_session.last_break_time %}
+                    {{ active_session.last_break_time.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% else %}
+                    No break taken yet
+                    {% endif %}
+                </p>
+            </div>
+            <div class="overview-card">
+                <h3>Next Break Due</h3>
+                <p class="value break-time" id="nextBreakTime">
+                    {% if active_session.next_break_time %}
+                    {{ active_session.next_break_time.strftime('%Y-%m-%d %H:%M:%S') }}
+                    {% else %}
+                    Not available
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <div class="live-alert-status {% if active_session.take_break_reasons %}take-break-needed{% endif %}" id="takeBreakStatus">
+            {% if active_session.take_break_reasons %}
+            Take a break now. Triggered by: {{ active_session.take_break_reasons | join(', ') }}.
+            {% else %}
+            You are on track. No break needed yet.
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="no-data">No active session. Start a session to track break timing.</p>
+        {% endif %}
+    </div>
+
+    <div class="sessions-container live-sensor-panel">
+        <h3>Live Sensor Feed</h3>
+        {% if active_session %}
+        <div class="live-sensor-grid">
+            <div class="overview-card">
+                <h3>Last Packet</h3>
+                <p class="value break-time" id="liveSensorTimestamp">Waiting for data...</p>
+            </div>
+            <div class="overview-card">
+                <h3>Reading Count</h3>
+                <p class="value" id="liveReadingCount">0</p>
+            </div>
+            <div class="overview-card">
+                <h3>Pitch</h3>
+                <p class="value" id="livePitch">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>Roll</h3>
+                <p class="value" id="liveRoll">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>FSR Left</h3>
+                <p class="value" id="liveFsrLeft">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>FSR Right</h3>
+                <p class="value" id="liveFsrRight">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>FSR Center</h3>
+                <p class="value" id="liveFsrCenter">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>Stress</h3>
+                <p class="value" id="liveStress">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>Seated</h3>
+                <p class="value" id="liveSeated">-</p>
+            </div>
+            <div class="overview-card">
+                <h3>Buzzer Triggered</h3>
+                <p class="value" id="liveBuzzerTriggered">-</p>
+            </div>
+        </div>
+
+        <div class="live-readings-stream">
+            <h4>Latest Sensor Packets</h4>
+            <table class="readings-table live-feed-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Pitch</th>
+                        <th>Roll</th>
+                        <th>FSR L</th>
+                        <th>FSR R</th>
+                        <th>FSR C</th>
+                        <th>Stress</th>
+                        <th>Seated</th>
+                        <th>Buzzer</th>
+                    </tr>
+                </thead>
+                <tbody id="liveReadingsBody">
+                    <tr>
+                        <td colspan="9" class="no-data">Waiting for incoming sensor packets...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">No active session. Start a session to view live sensor data.</p>
+        {% endif %}
     </div>
 
     <div class="stats-grid">
@@ -43,32 +161,35 @@
                     <th>Sitting Time</th>
                     <th>Session Score</th>
                     <th>Buzzer Count</th>
+                    <th>Breaks</th>
                     <th>Alerts</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 {% for session in sessions %}
+                {% set score = session.session_score if session.session_score is not none else 1.0 %}
                 <tr>
                     <td>{{ session.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
                     <td>{{ (session.get_duration() / 60) | round(0) | int }} min</td>
                     <td>{{ (session.sitting_duration / 60) | round(0) | int if session.sitting_duration else 0 }} min</td>
                     <td>
-                        {% if session.session_score >= 0.7 %}
+                        {% if score >= 0.7 %}
                         <span class="score-badge score-good">
-                            {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+                            {{ (score * 100) | round(0) | int }}%
                         </span>
-                        {% elif session.session_score >= 0.4 %}
+                        {% elif score >= 0.4 %}
                         <span class="score-badge score-medium">
-                            {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+                            {{ (score * 100) | round(0) | int }}%
                         </span>
                         {% else %}
                         <span class="score-badge score-poor">
-                            {{ (session.session_score * 100) | round(0) | int if session.session_score else 'N/A' }}%
+                            {{ (score * 100) | round(0) | int }}%
                         </span>
                         {% endif %}
                     </td>
                     <td>{{ session.buzzer_count or 0 }}</td>
+                    <td>{{ session.break_count or 0 }}</td>
                     <td>
                         {% if session.break_alert_triggered %}
                         <span class="alert-badge break-alert">Break</span>
@@ -89,6 +210,218 @@
 </div>
 
 <script>
+const activeSessionId = {{ active_session.id if active_session else 'null' }};
+const maxLiveRows = 20;
+let lastReadingId = 0;
+
+const liveReadingsBody = document.getElementById('liveReadingsBody');
+
+function formatDateTime(value) {
+    if (!value) {
+        return null;
+    }
+    const dt = new Date(value);
+    return isNaN(dt.getTime()) ? null : dt.toLocaleString();
+}
+
+function formatSensorValue(value, decimals = 1, suffix = '') {
+    if (value === null || value === undefined) {
+        return '-';
+    }
+    if (typeof value !== 'number') {
+        return String(value);
+    }
+    return `${value.toFixed(decimals)}${suffix}`;
+}
+
+function setText(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.textContent = value;
+    }
+}
+
+function updateLiveSensorCards(reading, readingCount) {
+    if (typeof readingCount === 'number') {
+        setText('liveReadingCount', String(readingCount));
+    }
+
+    if (!reading) {
+        return;
+    }
+
+    setText('liveSensorTimestamp', formatDateTime(reading.timestamp) || 'Waiting for data...');
+    setText('livePitch', formatSensorValue(reading.pitch, 1, ' deg'));
+    setText('liveRoll', formatSensorValue(reading.roll, 1, ' deg'));
+    setText('liveFsrLeft', reading.fsr_left ?? '-');
+    setText('liveFsrRight', reading.fsr_right ?? '-');
+    setText('liveFsrCenter', reading.fsr_center ?? '-');
+
+    if (reading.stress_score === null || reading.stress_score === undefined) {
+        setText('liveStress', '-');
+    } else {
+        setText('liveStress', `${(reading.stress_score * 100).toFixed(0)}%`);
+    }
+
+    if (reading.is_seated === null || reading.is_seated === undefined) {
+        setText('liveSeated', '-');
+    } else {
+        setText('liveSeated', reading.is_seated ? 'Yes' : 'No');
+    }
+
+    if (reading.buzzer_triggered === null || reading.buzzer_triggered === undefined) {
+        setText('liveBuzzerTriggered', '-');
+    } else {
+        setText('liveBuzzerTriggered', reading.buzzer_triggered ? 'Yes' : 'No');
+    }
+}
+
+function renderLiveReadingRow(reading) {
+    if (!liveReadingsBody || !reading) {
+        return;
+    }
+
+    const existingNoData = liveReadingsBody.querySelector('.no-data');
+    if (existingNoData) {
+        liveReadingsBody.innerHTML = '';
+    }
+
+    const row = document.createElement('tr');
+    const stressDisplay = (reading.stress_score === null || reading.stress_score === undefined)
+        ? '-'
+        : `${(reading.stress_score * 100).toFixed(0)}%`;
+    const seatedDisplay = (reading.is_seated === null || reading.is_seated === undefined)
+        ? '-'
+        : (reading.is_seated ? '<span class="badge-yes">Yes</span>' : '<span class="badge-no">No</span>');
+    const buzzerDisplay = (reading.buzzer_triggered === null || reading.buzzer_triggered === undefined)
+        ? '-'
+        : (reading.buzzer_triggered ? '<span class="badge-yes">Yes</span>' : '<span class="badge-no">No</span>');
+
+    row.innerHTML = `
+        <td>${formatDateTime(reading.timestamp) || '-'}</td>
+        <td>${formatSensorValue(reading.pitch, 1, ' deg')}</td>
+        <td>${formatSensorValue(reading.roll, 1, ' deg')}</td>
+        <td>${reading.fsr_left ?? '-'}</td>
+        <td>${reading.fsr_right ?? '-'}</td>
+        <td>${reading.fsr_center ?? '-'}</td>
+        <td>${stressDisplay}</td>
+        <td>${seatedDisplay}</td>
+        <td>${buzzerDisplay}</td>
+    `;
+
+    liveReadingsBody.prepend(row);
+
+    while (liveReadingsBody.children.length > maxLiveRows) {
+        liveReadingsBody.removeChild(liveReadingsBody.lastChild);
+    }
+}
+
+async function loadInitialLiveReadings(sessionId) {
+    try {
+        const response = await fetch(`/api/session/${sessionId}/readings?latest=1&limit=${maxLiveRows}`);
+        if (!response.ok) {
+            return;
+        }
+
+        const payload = await response.json();
+        const readings = payload.readings || [];
+
+        if (!liveReadingsBody) {
+            return;
+        }
+
+        liveReadingsBody.innerHTML = '';
+        readings.forEach((reading) => {
+            renderLiveReadingRow(reading);
+        });
+
+        if (readings.length === 0) {
+            liveReadingsBody.innerHTML = '<tr><td colspan="9" class="no-data">Waiting for incoming sensor packets...</td></tr>';
+            updateLiveSensorCards(null, 0);
+            return;
+        }
+
+        lastReadingId = payload.last_id || readings[readings.length - 1].id;
+        updateLiveSensorCards(readings[readings.length - 1], readings.length);
+    } catch (error) {
+        console.error('Error loading initial live readings:', error);
+    }
+}
+
+async function pollNewLiveReadings(sessionId) {
+    try {
+        const response = await fetch(`/api/session/${sessionId}/readings?since_id=${lastReadingId}&limit=200`);
+        if (!response.ok) {
+            return;
+        }
+
+        const payload = await response.json();
+        const readings = payload.readings || [];
+
+        if (readings.length === 0) {
+            return;
+        }
+
+        readings.forEach((reading) => {
+            renderLiveReadingRow(reading);
+        });
+
+        lastReadingId = payload.last_id || readings[readings.length - 1].id;
+        updateLiveSensorCards(readings[readings.length - 1]);
+    } catch (error) {
+        console.error('Error polling live readings:', error);
+    }
+}
+
+async function refreshActiveSessionBreakStats(sessionId) {
+    try {
+        const response = await fetch(`/api/session/${sessionId}/stats`);
+        if (!response.ok) {
+            return;
+        }
+
+        const stats = await response.json();
+        const breakCountEl = document.getElementById('breakCountValue');
+        const lastBreakEl = document.getElementById('lastBreakTime');
+        const nextBreakEl = document.getElementById('nextBreakTime');
+        const takeBreakStatusEl = document.getElementById('takeBreakStatus');
+
+        if (breakCountEl) {
+            breakCountEl.textContent = stats.break_count || 0;
+        }
+        if (lastBreakEl) {
+            const formatted = formatDateTime(stats.last_break_time);
+            lastBreakEl.textContent = formatted || 'No break taken yet';
+        }
+        if (nextBreakEl) {
+            const formatted = formatDateTime(stats.next_break_time);
+            nextBreakEl.textContent = formatted || 'Not available';
+        }
+        if (takeBreakStatusEl) {
+            if (stats.take_break_alert) {
+                const reasons = (stats.take_break_reasons || []).join(', ');
+                takeBreakStatusEl.textContent = `Take a break now. Triggered by: ${reasons}.`;
+                takeBreakStatusEl.classList.add('take-break-needed');
+            } else {
+                takeBreakStatusEl.textContent = 'You are on track. No break needed yet.';
+                takeBreakStatusEl.classList.remove('take-break-needed');
+            }
+        }
+
+        if (typeof stats.reading_count === 'number') {
+            setText('liveReadingCount', String(stats.reading_count));
+        }
+        if (stats.latest_reading) {
+            updateLiveSensorCards(stats.latest_reading, stats.reading_count);
+            if (stats.latest_reading.id) {
+                lastReadingId = Math.max(lastReadingId, stats.latest_reading.id);
+            }
+        }
+    } catch (error) {
+        console.error('Error refreshing active session stats:', error);
+    }
+}
+
 document.getElementById('startSessionBtn').addEventListener('click', async () => {
     try {
         const response = await fetch('/api/start-session', {
@@ -110,5 +443,45 @@ document.getElementById('startSessionBtn').addEventListener('click', async () =>
         alert('Error starting session: ' + error);
     }
 });
+
+const endSessionBtn = document.getElementById('endSessionBtn');
+if (endSessionBtn) {
+    endSessionBtn.addEventListener('click', async () => {
+        const sessionId = activeSessionId || localStorage.getItem('currentSessionId');
+        if (!sessionId) {
+            alert('No active session to end.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/session/${sessionId}/end`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (response.ok) {
+                alert('Session ended successfully.');
+                localStorage.removeItem('currentSessionId');
+                window.location.reload();
+                return;
+            }
+
+            const data = await response.json();
+            alert('Error ending session: ' + (data.error || 'Unknown error'));
+        } catch (error) {
+            alert('Error ending session: ' + error);
+        }
+    });
+}
+
+if (activeSessionId) {
+    localStorage.setItem('currentSessionId', activeSessionId);
+    loadInitialLiveReadings(activeSessionId);
+    refreshActiveSessionBreakStats(activeSessionId);
+    setInterval(() => pollNewLiveReadings(activeSessionId), 3000);
+    setInterval(() => refreshActiveSessionBreakStats(activeSessionId), 10000);
+}
 </script>
 {% endblock %}

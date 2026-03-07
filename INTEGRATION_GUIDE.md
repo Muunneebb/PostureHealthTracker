@@ -6,7 +6,7 @@ This project now includes a complete web application built with Flask that allow
 - Create accounts and login securely
 - Monitor posture sessions in real-time
 - View detailed session analytics and history
-- Receive alerts for excessive sitting (2+ hours) and posture issues (5+ buzzer activations)
+- Receive alerts for excessive sitting (2+ hours) and posture issues (3+ buzzer activations)
 
 ## Architecture
 
@@ -40,7 +40,7 @@ This project now includes a complete web application built with Flask that allow
 │  - Flask REST API                                      │
 │  - SQLite Database (user sessions, readings)          │
 │  - User authentication & session management           │
-│  - Alert logic (2hr break, 5x buzzer)                 │
+│  - Alert logic (2hr break, 3x buzzer)                 │
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────┐
@@ -48,7 +48,7 @@ This project now includes a complete web application built with Flask that allow
 │  - Login & Registration                                │
 │  - Dashboard with statistics                           │
 │  - Session details & analytics                         │
-│  - Real-time monitoring (future)                       │
+│  - Real-time monitoring (polling updates)              │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -259,7 +259,7 @@ Detailed view of each session:
 - Visible in session detail view
 
 #### Buzzer Alert
-- Triggered when buzzer activates 5+ times in a session
+- Triggered when buzzer activates 3+ times in a session
 - Indicates excessive posture issues
 - Recorded in session data
 
@@ -278,6 +278,7 @@ POST /api/start-session
 POST /api/session/<id>/end
 POST /api/session/<id>/readings
 GET /api/session/<id>/stats
+GET /api/session/<id>/readings
 GET /api/user/sessions
 ```
 
@@ -311,6 +312,10 @@ CREATE TABLE session (
   sitting_duration INTEGER,
   session_score FLOAT,
   buzzer_count INTEGER DEFAULT 0,
+  break_count INTEGER DEFAULT 0,
+  last_break_time DATETIME,
+  next_break_time DATETIME,
+  continuous_sitting_seconds INTEGER DEFAULT 0,
   break_alert_triggered BOOLEAN DEFAULT 0,
   excessive_buzzer_alert BOOLEAN DEFAULT 0,
   FOREIGN KEY(user_id) REFERENCES user(id)
@@ -383,7 +388,7 @@ Access the web interface at `http://localhost:5000`
 
 ## Future Enhancements
 
-- WebSocket integration for real-time dashboard updates
+- Optional WebSocket upgrade for lower-latency dashboard updates
 - CSRF protection for production
 - Email notifications for alerts
 - Data export to CSV/Excel

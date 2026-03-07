@@ -1,25 +1,29 @@
 # PostureHealthTracker Web Application
 
-A comprehensive web application for tracking posture health, monitor sensor readings, and manage user sessions.
+A web application for tracking posture sessions, storing sensor packets, and monitoring posture health in real time.
 
 ## Features
 
-- **User Authentication**: Secure login and registration system
-- **Session Management**: Track posture sessions with start/end times
-- **Real-time Monitoring**: Monitor sensor data in real-time
-- **Session Analytics**: View detailed session statistics and data visualization
-- **Alert System**:
-  - Break alert after 2 hours of continuous sitting
-  - Excessive buzzer alert when buzzer triggers 5 times
-- **User History**: View all past sessions with detailed metrics
-- **Dashboard**: Overview of stats and recent sessions
+- User authentication with registration and login
+- Session management with start and manual end controls
+- Real-time sensor feed on the dashboard for active sessions
+- Real-time session detail updates (new readings appended while session is active)
+- Break tracking during sessions:
+  - breaks taken count
+  - last break time
+  - next break due time
+- Alert system:
+  - take-break alert after 2 hours of continuous sitting
+  - take-break alert after 3 buzzer triggers
+- Session score starts at 100% and decreases by 1% per buzzer trigger
+- Session analytics and historical session table
 
 ## Technology Stack
 
-- **Backend**: Flask with Flask-SQLAlchemy
-- **Database**: SQLite
-- **Frontend**: HTML5, CSS3, JavaScript
-- **Charts**: Chart.js for data visualization
+- Backend: Flask + Flask-SQLAlchemy
+- Database: SQLite
+- Frontend: HTML5, CSS3, JavaScript
+- Charts: Chart.js
 
 ## Installation
 
@@ -28,108 +32,112 @@ A comprehensive web application for tracking posture health, monitor sensor read
    pip install -r requirements.txt
    ```
 
-2. Run the application:
+2. Run the app:
    ```bash
    python web_app.py
    ```
 
-3. Open your browser and navigate to:
+3. Open:
    ```
    http://localhost:5000
    ```
 
 ## Database Schema
 
-### User Table
-- id (Primary Key)
-- username (Unique)
-- password (Hashed)
-- email (Unique)
-- created_at (DateTime)
+### User
+- `id` (PK)
+- `username` (unique)
+- `password` (hashed)
+- `email` (unique)
+- `created_at`
 
-### Session Table
-- id (Primary Key)
-- user_id (Foreign Key)
-- start_time (DateTime)
-- end_time (DateTime)
-- total_duration (Integer - seconds)
-- sitting_duration (Integer - seconds)
-- session_score (Float - 0-1)
-- buzzer_count (Integer)
-- break_alert_triggered (Boolean)
-- excessive_buzzer_alert (Boolean)
+### Session
+- `id` (PK)
+- `user_id` (FK)
+- `start_time`
+- `end_time`
+- `total_duration` (seconds)
+- `sitting_duration` (seconds)
+- `session_score` (float 0-1, starts at 1.0)
+- `buzzer_count`
+- `break_count`
+- `last_break_time`
+- `next_break_time`
+- `continuous_sitting_seconds`
+- `break_alert_triggered`
+- `excessive_buzzer_alert`
 
-### Reading Table
-- id (Primary Key)
-- session_id (Foreign Key)
-- timestamp (DateTime)
-- pitch (Float - degrees)
-- roll (Float - degrees)
-- fsr_left (Integer - ADC value)
-- fsr_right (Integer - ADC value)
-- fsr_center (Integer - ADC value)
-- stress_score (Float - 0-1)
-- is_seated (Boolean)
-- buzzer_triggered (Boolean)
+### Reading
+- `id` (PK)
+- `session_id` (FK)
+- `timestamp`
+- `pitch`
+- `roll`
+- `fsr_left`
+- `fsr_right`
+- `fsr_center`
+- `stress_score`
+- `is_seated`
+- `buzzer_triggered`
 
 ## API Endpoints
 
 ### Authentication
-- `POST /register` - Register a new user
-- `POST /login` - Login user
-- `GET /logout` - Logout user
+- `POST /register`
+- `POST /login`
+- `GET /logout`
 
 ### Sessions
-- `POST /api/start-session` - Start a new session
-- `POST /api/session/<id>/end` - End a session
-- `POST /api/session/<id>/readings` - Add sensor reading
-- `GET /api/session/<id>/stats` - Get session statistics
-- `GET /api/user/sessions` - Get all user sessions
+- `POST /api/start-session`
+- `POST /api/session/<id>/end`
+- `POST /api/session/<id>/readings`
+- `GET /api/session/<id>/stats`
+- `GET /api/session/<id>/readings`
+- `GET /api/user/sessions`
 
-### Pages
-- `GET /dashboard` - Main dashboard
-- `GET /session/<id>` - View session details
+### Session Readings Query Parameters
+For `GET /api/session/<id>/readings`:
+- `since_id` (optional): fetch only rows where `reading.id > since_id`
+- `limit` (optional): max rows (default 100, max 500)
+- `latest` (optional): when true and `since_id` is not provided, returns the latest `limit` readings
 
-## Frontend Components
+### Session Stats Response Highlights
+`GET /api/session/<id>/stats` includes:
+- break tracker fields (`break_count`, `last_break_time`, `next_break_time`)
+- take-break status (`take_break_alert`, `take_break_reasons`)
+- reading metadata (`reading_count`, `latest_reading`)
+
+## Frontend Behavior
 
 ### Dashboard
-- Statistics cards showing total sessions, sitting time, average score, alerts
-- Table of recent sessions with sortable columns
-- Quick action to start new session
+- Start and end active session controls
+- Break tracker panel (last break, next break, break count)
+- Live sensor panel with all sensor fields:
+  - pitch, roll
+  - fsr left/right/center
+  - stress score
+  - seated state
+  - buzzer-triggered state
+- Live sensor packet table updates every few seconds
 
 ### Session Detail
-- Overview statistics
-- Alert notifications
-- Sensor reading graphs (stress score, pitch, roll)
-- Detailed reading table
-
-### Authentication Pages
-- Login page with form validation
-- Registration page with password confirmation
-- Error handling and user feedback
-
-## Configuration
-
-Edit the Flask app configuration in `web_app.py`:
-```python
-app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posture_tracker.db'
-```
+- Full reading table includes all sensor values
+- Stress and position charts update in real time for active sessions
+- Summary stats refresh while session is active
 
 ## Alert Conditions
 
-1. **Break Alert**: Triggered when a session exceeds 2 hours (7200 seconds) of continuous sitting
-2. **Buzzer Alert**: Triggered when the buzzer has been activated 5 or more times during a session
+1. Break alert: 2 hours (7200 seconds) of continuous sitting
+2. Buzzer alert: 3 or more buzzer activations in the session
 
-## Data Visualization
+## Scoring Rule
 
-- **Stress Score Chart**: Line graph showing stress levels over time
-- **Position Chart**: Dual-line graph showing pitch and roll angles over time
+- Session score starts at `1.0` (100%)
+- Each `buzzer_triggered` event reduces score by `0.01` (1%)
+- Score is clamped to a minimum of `0.0`
 
 ## Notes
 
-- Session data is stored locally in SQLite database
-- Password hashing uses Werkzeug's security functions
-- CSRF protection should be added for production use
-- WebSocket integration could be added for real-time updates
-- Browser notifications require user permission
+- Existing SQLite databases are upgraded at startup to add new break-tracking session columns.
+- Browser notifications require permission.
+- Real-time updates currently use polling; WebSocket can be added later if needed.
