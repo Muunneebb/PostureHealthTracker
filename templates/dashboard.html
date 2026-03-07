@@ -4,18 +4,179 @@
 
 {% block content %}
 <div class="dashboard">
-    <div class="dashboard-header">
-        <h2>Your Dashboard</h2>
-        <div class="session-actions">
-            <button id="startSessionBtn" class="btn btn-primary">Start New Session</button>
-            <button id="endSessionBtn" class="btn btn-secondary" {% if not active_session %}style="display:none;"{% endif %}>End Active Session</button>
+    <!-- Top Stats Cards -->
+    <div class="top-stats-grid">
+        <div class="top-stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <h3>Total Sessions</h3>
+                <p class="stat-number">{{ stats.total_sessions }}</p>
+            </div>
+        </div>
+        <div class="top-stat-card">
+            <div class="stat-icon">📈</div>
+            <div class="stat-content">
+                <h3>Avg Posture Score</h3>
+                <p class="stat-number">{{ (stats.avg_session_score * 100) | round(0) | int }}%</p>
+            </div>
+        </div>
+        <div class="top-stat-card">
+            <div class="stat-icon">🕐</div>
+            <div class="stat-content">
+                <h3>Total Sitting Time</h3>
+                <p class="stat-number">{{ (stats.total_sitting_time / 3600) | round(0) | int }}h {{ ((stats.total_sitting_time % 3600) / 60) | round(0) | int }}m</p>
+            </div>
         </div>
     </div>
 
-    <div class="sessions-container break-tracker-panel">
-        <h3>Active Session Break Tracker</h3>
-        {% if active_session %}
-        <div class="break-tracker-grid">
+    <!-- Current Monitoring Session -->
+    <div class="monitoring-session-card">
+        <h3>Current Monitoring Session</h3>
+        <div class="session-status">
+            {% if active_session %}
+            <div class="status-indicator status-active"></div>
+            <span class="status-text"><strong>Status: Active</strong></span>
+            <p class="status-subtext">Monitoring in progress. Session ID: {{ active_session.id }}</p>
+            {% else %}
+            <div class="status-indicator status-inactive"></div>
+            <span class="status-text"><strong>Status: Not Active</strong></span>
+            <p class="status-subtext">No monitoring session running.</p>
+            {% endif %}
+        </div>
+        <div class="session-button-container">
+            {% if active_session %}
+            <button id="endSessionBtn" class="btn btn-secondary">End Monitoring</button>
+            {% else %}
+            <button id="startSessionBtn" class="btn btn-primary">Start Monitoring</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Posture Health Score -->
+    <div class="posture-health-card">
+        <h3>Posture Health Score</h3>
+        <div class="health-score-container">
+            <div class="health-bar-wrapper">
+                {% set score_pct = (stats.avg_session_score * 100) | round(0) | int %}
+                <div class="health-bar">
+                    <div class="health-segment segment-excellent" style="width: 20%;"></div>
+                    <div class="health-segment segment-good" style="width: 20%;"></div>
+                    <div class="health-segment segment-fair" style="width: 20%;"></div>
+                    <div class="health-segment segment-needs-improvement" style="width: 20%;"></div>
+                    <div class="health-segment segment-poor" style="width: 20%;"></div>
+                </div>
+                <div class="health-marker" style="left: {{ score_pct }}%;"></div>
+            </div>
+            <div class="health-score-value">{{ score_pct }}%</div>
+        </div>
+        <div class="health-status">
+            {% if score_pct >= 80 %}
+            <span class="status-icon status-excellent">✓</span>
+            <span class="status-label">Status: Excellent</span>
+            {% elif score_pct >= 60 %}
+            <span class="status-icon status-good">✓</span>
+            <span class="status-label">Status: Good</span>
+            {% elif score_pct >= 40 %}
+            <span class="status-icon status-fair">⚠</span>
+            <span class="status-label">Status: Fair</span>
+            {% else %}
+            <span class="status-icon status-warning">⚠</span>
+            <span class="status-label">Status: Needs Improvement</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Two Column Layout: Session History & Posture Insight -->
+    <div class="two-column-layout">
+        <!-- Session History -->
+        <div class="session-history-card">
+            <h3>Session History</h3>
+            {% if sessions %}
+            <table class="simple-sessions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Duration</th>
+                        <th>Posture Score</th>
+                        <th>Alerts</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in sessions[:10] %}
+                    {% set score = session.session_score if session.session_score is not none else 1.0 %}
+                    {% set score_pct = (score * 100) | round(0) | int %}
+                    <tr onclick="window.location='{{ url_for('view_session', session_id=session.id) }}';" style="cursor: pointer;">
+                        <td>{{ session.start_time.strftime('%b %d, %Y') }}</td>
+                        <td>{{ (session.get_duration() / 60) | round(0) | int }} min</td>
+                        <td>
+                            {% if score_pct >= 70 %}
+                            <span class="score-text score-good">{{ score_pct }}%</span>
+                            {% elif score_pct >= 50 %}
+                            <span class="score-text score-medium">{{ score_pct }}%</span>
+                            {% else %}
+                            <span class="score-text score-poor">{{ score_pct }}%</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="no-data">No sessions yet. Start your first session to track your posture health!</p>
+            {% endif %}
+        </div>
+
+        <!-- Posture Insight -->
+        <div class="posture-insight-card">
+            <div class="insight-header">
+                <span class="insight-icon">💡</span>
+                <h3>Posture Insight</h3>
+            </div>
+            <div class="insight-content">
+                {% set score_pct = (stats.avg_session_score * 100) | round(0) | int %}
+                {% if sessions|length > 5 %}
+                    {% set recent_avg = (sessions[:5] | map(attribute='session_score') | sum / 5 * 100) | round(0) | int %}
+                    {% set older_avg = (sessions[5:10] | map(attribute='session_score') | sum / (sessions[5:10]|length) * 100) | round(0) | int if sessions|length > 5 else score_pct %}
+                    {% set improvement = recent_avg - older_avg %}
+                    {% if improvement > 0 %}
+                    <p class="insight-message">Your posture score improved {{ improvement }}% this week.</p>
+                    {% elif improvement < 0 %}
+                    <p class="insight-message">Your posture score decreased {{ -improvement }}% this week. Let's work on improving!</p>
+                    {% else %}
+                    <p class="insight-message">Your posture score remained stable this week.</p>
+                    {% endif %}
+                {% else %}
+                    <p class="insight-message">Complete more sessions to see your progress insights.</p>
+                {% endif %}
+                
+                <div class="insight-tip">
+                    <span class="tip-icon">💡</span>
+                    <div class="tip-content">
+                        <strong>Tip:</strong>
+                        {% if score_pct < 50 %}
+                        Keep your shoulders relaxed and your screen at eye level. Take regular breaks every hour.
+                        {% elif score_pct < 70 %}
+                        Keep your shoulders relaxed and your screen at eye level.
+                        {% else %}
+                        Great job! Maintain your posture by staying mindful throughout the day.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden: Advanced panels for active sessions -->
+    {% if active_session %}
+    <details class="advanced-panel" style="margin-top: 2rem;">
+        <summary style="cursor: pointer; padding: 1rem; background: var(--bg-light); border-radius: var(--radius-md); font-weight: 600; color: var(--text-primary);">
+            🔧 Advanced Session Monitoring (Click to expand)
+        </summary>
+        <div style="margin-top: 1rem;">
+            <div class="sessions-container break-tracker-panel">
+                <h3>Active Session Break Tracker</h3>
+                <div class="break-tracker-grid">
             <div class="overview-card">
                 <h3>Breaks Taken</h3>
                 <p class="value" id="breakCountValue">{{ active_session.break_count }}</p>
@@ -122,84 +283,10 @@
                 </tbody>
             </table>
         </div>
-        {% else %}
-        <p class="no-data">No active session. Start a session to view live sensor data.</p>
-        {% endif %}
-    </div>
-
-    <div class="stats-grid">
-        <div class="stat-card">
-            <h3>Total Sessions</h3>
-            <p class="stat-value">{{ stats.total_sessions }}</p>
         </div>
-        <div class="stat-card">
-            <h3>Total Sitting Time</h3>
-            <p class="stat-value">{{ (stats.total_sitting_time / 3600) | round(1) }} hrs</p>
         </div>
-        <div class="stat-card">
-            <h3>Avg Session Score</h3>
-            <p class="stat-value">{{ (stats.avg_session_score * 100) | round(0) | int }}%</p>
-        </div>
-        <div class="stat-card">
-            <h3>Posture Alerts</h3>
-            <p class="stat-value alert-number">{{ stats.posture_alerts }}</p>
-        </div>
-        <div class="stat-card">
-            <h3>Break Alerts</h3>
-            <p class="stat-value alert-number">{{ stats.break_alerts }}</p>
-        </div>
-    </div>
-
-    <div class="sessions-container">
-        <h3>Recent Sessions</h3>
-        {% if sessions %}
-        <table class="sessions-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Duration</th>
-                    <th>Sitting Time</th>
-                    <th>Session Score</th>
-                    <th>Posture Alerts</th>
-                    <th>Break Alerts</th>
-                    <th>Breaks</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for session in sessions %}
-                {% set score = session.session_score if session.session_score is not none else 1.0 %}
-                <tr>
-                    <td>{{ session.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
-                    <td>{{ (session.get_duration() / 60) | round(0) | int }} min</td>
-                    <td>{{ (session.sitting_duration / 60) | round(0) | int if session.sitting_duration else 0 }} min</td>
-                    <td>
-                        {% if score >= 0.7 %}
-                        <span class="score-badge score-good">
-                            {{ (score * 100) | round(0) | int }}%
-                        </span>
-                        {% elif score >= 0.4 %}
-                        <span class="score-badge score-medium">
-                            {{ (score * 100) | round(0) | int }}%
-                        </span>
-                        {% else %}
-                        <span class="score-badge score-poor">
-                            {{ (score * 100) | round(0) | int }}%
-                        </span>
-                        {% endif %}
-                    </td>
-                    <td>{{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }}</td>
-                    <td>{{ session.break_alert_count if session.break_alert_count is defined else 0 }}</td>
-                    <td>{{ session.break_count or 0 }}</td>
-                    <td><a href="{{ url_for('view_session', session_id=session.id) }}" class="btn btn-small">View</a></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p class="no-data">No sessions yet. Start your first session to track your posture health!</p>
-        {% endif %}
-    </div>
+        </details>
+    {% endif %}
 </div>
 
 <script>
