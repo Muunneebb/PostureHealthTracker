@@ -40,8 +40,12 @@
             {% endif %}
         </div>
         <div class="overview-card">
-            <h3>Buzzer Count</h3>
-            <p class="value" id="detailBuzzerCount">{{ session.buzzer_count }}</p>
+            <h3>Posture Alerts</h3>
+            <p class="value" id="detailPostureAlertCount">{{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }}</p>
+        </div>
+        <div class="overview-card">
+            <h3>Break Alerts</h3>
+            <p class="value" id="detailBreakAlertCount">{{ session.break_alert_count if session.break_alert_count is defined else 0 }}</p>
         </div>
         <div class="overview-card">
             <h3>Breaks Taken</h3>
@@ -58,22 +62,27 @@
     </div>
 
     <div class="alerts-section">
-        <h3>Alerts</h3>
+        <h3>Alert Summary</h3>
         <div class="alerts-list">
+            <div class="alert-item posture-alert-summary">
+                <span class="alert-icon">P</span>
+                <span class="alert-text">Posture Alerts: {{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }} (fix your posture)</span>
+            </div>
+            <div class="alert-item break-alert-summary">
+                <span class="alert-icon">B</span>
+                <span class="alert-text">Break Alerts: {{ session.break_alert_count if session.break_alert_count is defined else 0 }} (take a break)</span>
+            </div>
             {% if session.break_alert %}
             <div class="alert-item break-alert">
                 <span class="alert-icon">!</span>
-                <span class="alert-text">Break alert triggered - You sat for over 2 hours</span>
+                <span class="alert-text">Continuous sitting alert - You sat for over 2 hours</span>
             </div>
             {% endif %}
             {% if session.excessive_buzzer_alert %}
             <div class="alert-item buzzer-alert">
-                <span class="alert-icon">B</span>
-                <span class="alert-text">Excessive buzzer alert - Buzzer triggered 3 times</span>
+                <span class="alert-icon">!</span>
+                <span class="alert-text">Excessive posture issues - Too many posture corrections needed</span>
             </div>
-            {% endif %}
-            {% if not session.break_alert and not session.excessive_buzzer_alert %}
-            <p class="no-alerts">No alerts triggered during this session</p>
             {% endif %}
         </div>
     </div>
@@ -369,7 +378,8 @@ async function refreshSessionStatsSummary() {
         const sittingDurationEl = document.getElementById('detailSittingDuration');
         const sittingPctEl = document.getElementById('detailSittingPercentage');
         const scoreEl = document.getElementById('detailSessionScore');
-        const buzzerEl = document.getElementById('detailBuzzerCount');
+        const postureAlertEl = document.getElementById('detailPostureAlertCount');
+        const breakAlertEl = document.getElementById('detailBreakAlertCount');
         const breakCountEl = document.getElementById('detailBreakCount');
         const liveSyncStatusEl = document.getElementById('liveSyncStatus');
 
@@ -387,8 +397,11 @@ async function refreshSessionStatsSummary() {
             scoreEl.textContent = `${Math.round(score * 100)}%`;
             applyScoreClass(scoreEl, score);
         }
-        if (buzzerEl) {
-            buzzerEl.textContent = String(stats.buzzer_count || 0);
+        if (postureAlertEl) {
+            postureAlertEl.textContent = String(stats.posture_alert_count || 0);
+        }
+        if (breakAlertEl) {
+            breakAlertEl.textContent = String(stats.break_alert_count || 0);
         }
         if (breakCountEl) {
             breakCountEl.textContent = String(stats.break_count || 0);

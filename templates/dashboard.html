@@ -141,12 +141,12 @@
             <p class="stat-value">{{ (stats.avg_session_score * 100) | round(0) | int }}%</p>
         </div>
         <div class="stat-card">
-            <h3>Break Alerts</h3>
-            <p class="stat-value alert-number">{{ stats.break_alerts }}</p>
+            <h3>Posture Alerts</h3>
+            <p class="stat-value alert-number">{{ stats.posture_alerts }}</p>
         </div>
         <div class="stat-card">
-            <h3>Buzzer Alerts</h3>
-            <p class="stat-value alert-number">{{ stats.buzzer_alerts }}</p>
+            <h3>Break Alerts</h3>
+            <p class="stat-value alert-number">{{ stats.break_alerts }}</p>
         </div>
     </div>
 
@@ -160,9 +160,9 @@
                     <th>Duration</th>
                     <th>Sitting Time</th>
                     <th>Session Score</th>
-                    <th>Buzzer Count</th>
+                    <th>Posture Alerts</th>
+                    <th>Break Alerts</th>
                     <th>Breaks</th>
-                    <th>Alerts</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -188,16 +188,9 @@
                         </span>
                         {% endif %}
                     </td>
-                    <td>{{ session.buzzer_count or 0 }}</td>
+                    <td>{{ (session.posture_alert_count if session.posture_alert_count is defined else session.buzzer_count) or 0 }}</td>
+                    <td>{{ session.break_alert_count if session.break_alert_count is defined else 0 }}</td>
                     <td>{{ session.break_count or 0 }}</td>
-                    <td>
-                        {% if session.break_alert_triggered %}
-                        <span class="alert-badge break-alert">Break</span>
-                        {% endif %}
-                        {% if session.excessive_buzzer_alert %}
-                        <span class="alert-badge buzzer-alert">Buzzer</span>
-                        {% endif %}
-                    </td>
                     <td><a href="{{ url_for('view_session', session_id=session.id) }}" class="btn btn-small">View</a></td>
                 </tr>
                 {% endfor %}

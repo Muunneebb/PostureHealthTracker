@@ -44,7 +44,9 @@ class Session(db.Model):
     total_duration = db.Column(db.Integer)  # in seconds
     sitting_duration = db.Column(db.Integer)  # in seconds
     session_score = db.Column(db.Float, default=1.0)  # starts at 100%, reduced by posture alerts
-    buzzer_count = db.Column(db.Integer, default=0)
+    buzzer_count = db.Column(db.Integer, default=0)  # for backward compatibility, same as posture_alert_count
+    posture_alert_count = db.Column(db.Integer, default=0)  # number of posture corrections (buzzer triggers)
+    break_alert_count = db.Column(db.Integer, default=0)  # number of break alerts issued
     break_count = db.Column(db.Integer, default=0)
     last_break_time = db.Column(db.DateTime)
     next_break_time = db.Column(db.DateTime)
@@ -72,6 +74,11 @@ class Session(db.Model):
         if not anchor:
             return None
         return anchor + timedelta(seconds=BREAK_INTERVAL_SECONDS)
+
+    def should_show_break_alert(self):
+        """Check if a break alert should be shown based on current conditions."""
+        reasons = get_take_break_reasons(self)
+        return len(reasons) > 0
 
 
 class Reading(db.Model):
@@ -144,12 +151,19 @@ def ensure_session_schema_columns():
         'last_break_time': 'ALTER TABLE session ADD COLUMN last_break_time DATETIME',
         'next_break_time': 'ALTER TABLE session ADD COLUMN next_break_time DATETIME',
         'continuous_sitting_seconds': 'ALTER TABLE session ADD COLUMN continuous_sitting_seconds INTEGER DEFAULT 0',
+        'posture_alert_count': 'ALTER TABLE session ADD COLUMN posture_alert_count INTEGER DEFAULT 0',
+        'break_alert_count': 'ALTER TABLE session ADD COLUMN break_alert_count INTEGER DEFAULT 0',
+        'session_score': 'ALTER TABLE session ADD COLUMN session_score FLOAT DEFAULT 1.0',
     }
 
     with db.engine.begin() as connection:
         for column_name, statement in alter_statements.items():
             if column_name not in existing_columns:
                 connection.execute(text(statement))
+        
+        # For existing rows without session_score, set them to 1.0
+        if 'session_score' in existing_columns:
+            connection.execute(text('UPDATE session SET session_score = 1.0 WHERE session_score IS NULL'))
 
 
 # Routes
@@ -227,8 +241,10 @@ def dashboard():
         'total_sessions': len(sessions),
         'total_sitting_time': sum(s.sitting_duration or 0 for s in sessions),
         'avg_session_score': sum(s.session_score if s.session_score is not None else 1.0 for s in sessions) / max(len(sessions), 1),
-        'break_alerts': sum(1 for s in sessions if s.break_alert_triggered),
-        'buzzer_alerts': sum(1 for s in sessions if s.excessive_buzzer_alert),
+        'posture_alerts': sum(s.posture_alert_count or 0 for s in sessions),
+        'break_alerts': sum(s.break_alert_count or 0 for s in sessions),
+        'break_alerts_triggered': sum(1 for s in sessions if s.break_alert_triggered),
+        'buzzer_alerts_triggered': sum(1 for s in sessions if s.excessive_buzzer_alert),
     }
 
     active_session_data = None
@@ -269,6 +285,8 @@ def view_session(session_id):
         'sitting_percentage': sess.get_sitting_percentage(),
         'session_score': sess.session_score if sess.session_score is not None else 1.0,
         'buzzer_count': sess.buzzer_count,
+        'posture_alert_count': sess.posture_alert_count or 0,
+        'break_alert_count': sess.break_alert_count or 0,
         'break_count': sess.break_count or 0,
         'last_break_time': serialize_datetime(sess.last_break_time),
         'next_break_time': serialize_datetime(sess.next_break_time or sess.get_next_break_due()),
@@ -298,6 +316,9 @@ def start_session():
         start_time=session_start,
         sitting_duration=0,
         session_score=1.0,
+        buzzer_count=0,
+        posture_alert_count=0,
+        break_alert_count=0,
         break_count=0,
         continuous_sitting_seconds=0,
         next_break_time=session_start + timedelta(seconds=BREAK_INTERVAL_SECONDS),
@@ -344,6 +365,10 @@ def add_reading(session_id):
         sess.break_count = 0
     if sess.continuous_sitting_seconds is None:
         sess.continuous_sitting_seconds = 0
+    if sess.posture_alert_count is None:
+        sess.posture_alert_count = 0
+    if sess.break_alert_count is None:
+        sess.break_alert_count = 0
 
     # Update sitting and break tracking.
     if is_seated:
@@ -358,18 +383,32 @@ def add_reading(session_id):
     # Update next break due time from last break (or session start if no break yet).
     sess.next_break_time = sess.get_next_break_due()
 
-    # Update buzzer count
+    # POSTURE ALERTS: Update buzzer/posture alert count when buzzer is triggered
     if buzzer_triggered:
         sess.buzzer_count = (sess.buzzer_count or 0) + 1
-        sess.session_score = max(0.0, 1.0 - (sess.buzzer_count * POSTURE_ALERT_SCORE_PENALTY))
+        sess.posture_alert_count = (sess.posture_alert_count or 0) + 1
+        
+        # Update session score - decreases by POSTURE_ALERT_SCORE_PENALTY (1%) per posture alert
+        sess.session_score = max(0.0, 1.0 - (sess.posture_alert_count * POSTURE_ALERT_SCORE_PENALTY))
 
-        # Alert if buzzer triggered 3 times.
-        if sess.buzzer_count >= BUZZER_BREAK_ALERT_THRESHOLD:
+    # BREAK ALERTS: Check if break alert conditions are met
+    break_alert_needed = False
+    
+    # Alert if buzzer triggered 3+ times
+    if (sess.posture_alert_count or 0) >= BUZZER_BREAK_ALERT_THRESHOLD:
+        if not sess.excessive_buzzer_alert:
             sess.excessive_buzzer_alert = True
+            break_alert_needed = True
 
-    # Track whether a 2-hour continuous sitting alert happened in this session.
+    # Track whether a 2-hour continuous sitting alert happened in this session
     if sess.continuous_sitting_seconds >= BREAK_INTERVAL_SECONDS:
-        sess.break_alert_triggered = True
+        if not sess.break_alert_triggered:
+            sess.break_alert_triggered = True
+            break_alert_needed = True
+    
+    # Increment break alert count when any break alert is triggered
+    if break_alert_needed:
+        sess.break_alert_count = (sess.break_alert_count or 0) + 1
 
     db.session.add(reading)
     db.session.commit()
@@ -424,6 +463,8 @@ def get_session_stats(session_id):
         'sitting_percentage': sess.get_sitting_percentage(),
         'session_score': sess.session_score if sess.session_score is not None else 1.0,
         'buzzer_count': sess.buzzer_count,
+        'posture_alert_count': sess.posture_alert_count or 0,
+        'break_alert_count': sess.break_alert_count or 0,
         'break_count': sess.break_count or 0,
         'last_break_time': serialize_datetime(sess.last_break_time),
         'next_break_time': serialize_datetime(next_break_time),
@@ -495,6 +536,8 @@ def get_user_sessions():
             'sitting_duration': s.sitting_duration,
             'session_score': s.session_score if s.session_score is not None else 1.0,
             'buzzer_count': s.buzzer_count,
+            'posture_alert_count': s.posture_alert_count or 0,
+            'break_alert_count': s.break_alert_count or 0,
             'break_count': s.break_count or 0,
             'last_break_time': serialize_datetime(s.last_break_time),
             'next_break_time': serialize_datetime(s.next_break_time or s.get_next_break_due()),
