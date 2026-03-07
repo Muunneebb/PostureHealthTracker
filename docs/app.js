@@ -298,12 +298,6 @@ async function loadUserData() {
         let recentSessions = [];
         let activeSession = null;
 
-        const currentSessionList = document.getElementById('currentSessionList');
-        const previousSessionsList = document.getElementById('previousSessionsList');
-        
-        if(currentSessionList) currentSessionList.innerHTML = '';
-        if(previousSessionsList) previousSessionsList.innerHTML = '';
-
         sessionsSnapshot.forEach(doc => {
             const session = doc.data();
             const startTime = session.startTime.toDate();
@@ -341,71 +335,148 @@ async function loadUserData() {
             }
         });
 
+        const startBtn = document.getElementById('startSessionBtn');
+        const stopBtn = document.getElementById('stopSessionBtn');
+        const monitorStatusDot = document.getElementById('monitorStatusDot');
+        const monitorStatusText = document.getElementById('monitorStatusText');
+        const monitorStatusSubtext = document.getElementById('monitorStatusSubtext');
+
         if (activeSession) {
-            document.getElementById('startSessionBtn').style.display = 'none';
-            document.getElementById('stopSessionBtn').style.display = 'inline-block';
+            if (startBtn) startBtn.style.display = 'none';
+            if (stopBtn) stopBtn.style.display = 'inline-block';
             currentActiveSessionId = activeSession.id;
 
-            const activeScoreClass = activeSession.sessionScore >= 0.7 ? 'score-good' : 
-                activeSession.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
-
-            const activeCard = document.createElement('div');
-            activeCard.className = 'session-card';
-            activeCard.onclick = () => showSessionDetail(activeSession.id, activeSession);
-            activeCard.innerHTML = `
-                <div class="session-card-header">
-                    <span class="session-card-title">Session Started at ${activeSession.startTime.toLocaleTimeString()}</span>
-                    <span class="session-card-score ${activeScoreClass}">${(getSessionScore(activeSession) * 100).toFixed(0)}%</span>
-                </div>
-                <div class="session-card-details">
-                    <div>Status: Active</div>
-                    <div>Elapsed: ${Math.round(activeSession.duration / 60)}m</div>
-                    <div>Alerts: ${activeSession.buzzerCount || 0}</div>
-                </div>
-                <div style="text-align: right; margin-top: 10px;">
-                    <button onclick="deleteSession(event, '${activeSession.id}')" style="background: transparent; border: none; color: var(--danger); cursor: pointer; font-weight: 600; text-decoration: underline;">Delete Session</button>
-                </div>
-            `;
-            if(currentSessionList) currentSessionList.appendChild(activeCard);
+            if (monitorStatusDot) {
+                monitorStatusDot.classList.add('active');
+            }
+            if (monitorStatusText) {
+                monitorStatusText.textContent = 'Status: Active';
+            }
+            if (monitorStatusSubtext) {
+                monitorStatusSubtext.textContent = `Monitoring session running. Started at ${activeSession.startTime.toLocaleTimeString()}.`;
+            }
         } else {
-            document.getElementById('startSessionBtn').style.display = 'inline-block';
-            document.getElementById('stopSessionBtn').style.display = 'none';
-            if(currentSessionList) currentSessionList.innerHTML = '<p class="no-data">No active session. Click Start Session to begin.</p>';
-        }
+            if (startBtn) startBtn.style.display = 'inline-block';
+            if (stopBtn) stopBtn.style.display = 'none';
+            currentActiveSessionId = null;
 
-        if (recentSessions.length > 0) {
-            recentSessions.forEach(session => {
-                const scoreClass = session.sessionScore >= 0.7 ? 'score-good' : 
-                                session.sessionScore >= 0.4 ? 'score-medium' : 'score-poor';
-
-                const card = document.createElement('div');
-                card.className = 'session-card';
-                card.onclick = () => showSessionDetail(session.id, session);
-                card.innerHTML = `
-                    <div class="session-card-header">
-                        <span class="session-card-title">${session.startTime.toLocaleDateString()} at ${session.startTime.toLocaleTimeString()}</span>
-                        <span class="session-card-score ${scoreClass}">${(getSessionScore(session) * 100).toFixed(0)}%</span>
-                    </div>
-                    <div class="session-card-details">
-                        <div>Duration: ${Math.round(session.duration / 60)}m</div>
-                        <div>Sitting: ${Math.round((session.sitDuration || 0) / 60)}m</div>
-                        <div>Alerts: ${session.buzzerCount || 0}</div>
-                    </div>
-                    <div style="text-align: right; margin-top: 10px;">
-                        <button onclick="deleteSession(event, '${session.id}')" style="background: transparent; border: none; color: var(--danger); cursor: pointer; font-weight: 600; text-decoration: underline;">Delete Session</button>
-                    </div>
-                `;
-                if(previousSessionsList) previousSessionsList.appendChild(card);
-            });
-        } else {
-            if(previousSessionsList) previousSessionsList.innerHTML = '<p class="no-data">No previous sessions available.</p>';
+            if (monitorStatusDot) {
+                monitorStatusDot.classList.remove('active');
+            }
+            if (monitorStatusText) {
+                monitorStatusText.textContent = 'Status: Not Active';
+            }
+            if (monitorStatusSubtext) {
+                monitorStatusSubtext.textContent = 'No monitoring session running.';
+            }
         }
 
         document.getElementById('statTotalSessions').textContent = totalSessions;
         document.getElementById('statTotalSitting').textContent = Math.floor(totalSitting / 3600) + 'h ' + Math.floor((totalSitting % 3600) / 60) + 'm';
-        
-        const avgScore = scoreSampleCount ? (totalScore / scoreSampleCount * 100).toFixed(0) : 0;
+
+        const avgScore = scoreSampleCount ? Math.round((totalScore / scoreSampleCount) * 100) : 0;
         document.getElementById('statAvgScore').textContent = avgScore + '%';
+
+        const healthScoreValue = document.getElementById('healthScoreValue');
+        const healthScoreMarker = document.getElementById('healthScoreMarker');
+        const healthStatusLine = document.getElementById('healthStatusLine');
+
+        if (healthScoreValue) {
+            healthScoreValue.textContent = `${avgScore}%`;
+        }
+        if (healthScoreMarker) {
+            const markerPos = Math.max(2, Math.min(98, avgScore));
+            healthScoreMarker.style.left = `${markerPos}%`;
+        }
+
+        if (healthStatusLine) {
+            healthStatusLine.classList.remove('status-good', 'status-fair', 'status-warning', 'status-poor');
+
+            if (avgScore >= 80) {
+                healthStatusLine.textContent = 'Status: Excellent';
+                healthStatusLine.classList.add('status-good');
+            } else if (avgScore >= 60) {
+                healthStatusLine.textContent = 'Status: Good';
+                healthStatusLine.classList.add('status-good');
+            } else if (avgScore >= 40) {
+                healthStatusLine.textContent = 'Status: Needs Improvement';
+                healthStatusLine.classList.add('status-warning');
+            } else if (scoreSampleCount > 0) {
+                healthStatusLine.textContent = 'Status: Needs Immediate Attention';
+                healthStatusLine.classList.add('status-poor');
+            } else {
+                healthStatusLine.textContent = 'Status: Not enough data';
+                healthStatusLine.classList.add('status-fair');
+            }
+        }
+
+        const historyBody = document.getElementById('sessionHistoryBody');
+        const historyEmpty = document.getElementById('sessionHistoryEmpty');
+        if (historyBody) {
+            historyBody.innerHTML = '';
+            const historyRows = recentSessions.slice(0, 8);
+
+            if (historyRows.length === 0) {
+                if (historyEmpty) historyEmpty.style.display = 'block';
+            } else {
+                if (historyEmpty) historyEmpty.style.display = 'none';
+                historyRows.forEach(session => {
+                    const scorePct = Math.round(getSessionScore(session) * 100);
+                    const scoreClass = scorePct >= 70 ? 'score-good' : scorePct >= 50 ? 'score-medium' : 'score-poor';
+                    const postureAlerts = session.postureAlertCount ?? session.buzzerCount ?? 0;
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${session.startTime.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                        <td>${Math.round(session.duration / 60)} min</td>
+                        <td><span class="${scoreClass}">${scorePct}%</span></td>
+                        <td>${postureAlerts}</td>
+                    `;
+                    row.addEventListener('click', () => showSessionDetail(session.id, session));
+                    historyBody.appendChild(row);
+                });
+            }
+        }
+
+        const postureInsightMessage = document.getElementById('postureInsightMessage');
+        const postureInsightTip = document.getElementById('postureInsightTip');
+
+        if (postureInsightMessage) {
+            if (recentSessions.length >= 2) {
+                const windowSize = Math.min(4, recentSessions.length);
+                const currentWindow = recentSessions.slice(0, windowSize).map(s => getSessionScore(s) * 100);
+                const previousWindow = recentSessions.slice(windowSize, windowSize * 2).map(s => getSessionScore(s) * 100);
+
+                if (previousWindow.length > 0) {
+                    const currentAvg = currentWindow.reduce((sum, val) => sum + val, 0) / currentWindow.length;
+                    const previousAvg = previousWindow.reduce((sum, val) => sum + val, 0) / previousWindow.length;
+                    const delta = Math.round(currentAvg - previousAvg);
+
+                    if (delta > 0) {
+                        postureInsightMessage.textContent = `Your posture score improved ${delta}% recently.`;
+                    } else if (delta < 0) {
+                        postureInsightMessage.textContent = `Your posture score dropped ${Math.abs(delta)}% recently.`;
+                    } else {
+                        postureInsightMessage.textContent = 'Your posture score has remained stable recently.';
+                    }
+                } else {
+                    const latestScore = Math.round(getSessionScore(recentSessions[0]) * 100);
+                    postureInsightMessage.textContent = `Your latest session score is ${latestScore}%. Keep tracking your trend.`;
+                }
+            } else {
+                postureInsightMessage.textContent = 'Complete more sessions to see your trend insight.';
+            }
+        }
+
+        if (postureInsightTip) {
+            if (avgScore < 50) {
+                postureInsightTip.textContent = 'Keep your shoulders relaxed and your screen at eye level.';
+            } else if (avgScore < 70) {
+                postureInsightTip.textContent = 'Take short posture resets every 45 to 60 minutes.';
+            } else {
+                postureInsightTip.textContent = 'Great consistency. Maintain neutral neck alignment through the day.';
+            }
+        }
 
         window.userRecentSessions = recentSessions;
 
@@ -512,7 +583,7 @@ function showSessionDetail(sessionId, session) {
             </div>
             <div class="stat-row cyber-row">
                 <span>Alerts Triggered:</span>
-                <span class="neon-text">${session.buzzerCount || 0}</span>
+                <span class="neon-text">${session.postureAlertCount ?? session.buzzerCount ?? 0}</span>
             </div>
             <button onclick="deleteSession(event, '${sessionId}')" class="btn btn-danger" style="margin-top: 20px; width: 100%;">Delete Session</button>
         </div>

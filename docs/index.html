@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Posture Health Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=20260307b">
+    <link rel="stylesheet" href="styles.css?v=20260307c">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -76,10 +76,6 @@
         <div class="container">
             <div class="dashboard-header">
                 <h2>Dashboard Overview</h2>
-                <div style="display: flex; gap: 10px;">
-                    <button id="startSessionBtn" onclick="startNewSession()" class="btn btn-primary">Start Session</button>
-                    <button id="stopSessionBtn" onclick="stopSession()" class="btn btn-danger" style="display: none;">Stop Session</button>
-                </div>
             </div>
 
             <div class="stats-grid">
@@ -104,15 +100,59 @@
 
             <div id="myDataTab" class="tab-content active">
                 <div class="sessions-container cyber-card">
-                    <h3 class="section-title">Current Session</h3>
-                    <div id="currentSessionList" class="sessions-list">
-                        </div>
+                    <h3 class="section-title">Current Monitoring Session</h3>
+                    <div class="monitor-status-row">
+                        <span id="monitorStatusDot" class="monitor-dot"></span>
+                        <span id="monitorStatusText" class="monitor-status-text">Status: Not Active</span>
+                    </div>
+                    <p id="monitorStatusSubtext" class="monitor-subtext">No monitoring session running.</p>
+                    <div class="monitor-actions-row">
+                        <button id="startSessionBtn" onclick="startNewSession()" class="btn btn-primary">Start Monitoring</button>
+                        <button id="stopSessionBtn" onclick="stopSession()" class="btn btn-danger" style="display: none;">Stop Monitoring</button>
+                    </div>
                 </div>
                 
-                <div class="sessions-container cyber-card" style="margin-top: 20px;">
-                    <h3 class="section-title">Previous Sessions</h3>
-                    <div id="previousSessionsList" class="sessions-list">
+                <div class="sessions-container cyber-card" style="margin-top: 16px;">
+                    <h3 class="section-title">Posture Health Score</h3>
+                    <div class="health-score-row">
+                        <div class="health-bar-track">
+                            <span class="health-segment segment-good"></span>
+                            <span class="health-segment segment-fair"></span>
+                            <span class="health-segment segment-warn"></span>
+                            <span class="health-segment segment-caution"></span>
+                            <span class="health-segment segment-poor"></span>
+                            <span id="healthScoreMarker" class="health-marker"></span>
                         </div>
+                        <span id="healthScoreValue" class="health-score-value">0%</span>
+                    </div>
+                    <p id="healthStatusLine" class="health-status-line">Status: Not enough data</p>
+                </div>
+
+                <div class="insight-layout" style="margin-top: 16px;">
+                    <div class="sessions-container cyber-card">
+                        <h3 class="section-title">Session History</h3>
+                        <table class="session-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Duration</th>
+                                    <th>Posture Score</th>
+                                    <th>Alerts</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sessionHistoryBody"></tbody>
+                        </table>
+                        <p id="sessionHistoryEmpty" class="no-data" style="display: none; margin-top: 10px;">No previous sessions available.</p>
+                    </div>
+
+                    <aside class="posture-insight-card cyber-card">
+                        <h3 class="section-title">Posture Insight</h3>
+                        <p id="postureInsightMessage" class="insight-message">Complete more sessions to see your trend.</p>
+                        <div class="insight-tip-box">
+                            <span class="insight-tip-label">Tip:</span>
+                            <span id="postureInsightTip">Keep your shoulders relaxed and your screen at eye level.</span>
+                        </div>
+                    </aside>
                 </div>
             </div>
 
@@ -189,6 +229,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="app.js?v=20260307b"></script>
+    <script src="app.js?v=20260307c"></script>
 </body>
 </html>

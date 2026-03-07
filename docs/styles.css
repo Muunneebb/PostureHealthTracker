@@ -374,6 +374,201 @@ h3 {
     margin-top: 0.9rem;
 }
 
+.monitor-status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.25rem;
+}
+
+.monitor-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #b4bfd4;
+    box-shadow: 0 0 0 4px rgba(180, 191, 212, 0.25);
+}
+
+.monitor-dot.active {
+    background: #49b77b;
+    box-shadow: 0 0 0 4px rgba(73, 183, 123, 0.23);
+}
+
+.monitor-status-text {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #304f7e;
+}
+
+.monitor-subtext {
+    margin-top: 0.35rem;
+    color: var(--text-muted);
+}
+
+.monitor-actions-row {
+    margin-top: 0.95rem;
+    display: flex;
+    justify-content: center;
+    gap: 0.7rem;
+}
+
+.health-score-row {
+    margin-top: 0.2rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.7rem;
+    align-items: center;
+}
+
+.health-bar-track {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    height: 20px;
+    border-radius: 999px;
+    border: 1px solid #cad5e8;
+}
+
+.health-segment {
+    width: 20%;
+    height: 100%;
+}
+
+.segment-good {
+    background: #73c99a;
+}
+
+.segment-fair {
+    background: #bad458;
+}
+
+.segment-warn {
+    background: #f0b65b;
+}
+
+.segment-caution {
+    background: #e58355;
+}
+
+.segment-poor {
+    background: #c8cedd;
+}
+
+.health-marker {
+    position: absolute;
+    top: -4px;
+    height: 28px;
+    width: 3px;
+    border-radius: 6px;
+    background: #2a4a75;
+    transform: translateX(-50%);
+}
+
+.health-score-value {
+    font-size: 2.1rem;
+    line-height: 1;
+    font-weight: 700;
+    color: #2a4f84;
+}
+
+.health-status-line {
+    margin-top: 0.65rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #60779d;
+}
+
+.health-status-line.status-good {
+    color: #2f8f46;
+}
+
+.health-status-line.status-fair {
+    color: #60779d;
+}
+
+.health-status-line.status-warning {
+    color: #a07318;
+}
+
+.health-status-line.status-poor {
+    color: #b74252;
+}
+
+.insight-layout {
+    display: grid;
+    grid-template-columns: 1.75fr 1fr;
+    gap: 0.8rem;
+}
+
+.session-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+}
+
+.session-history-table th,
+.session-history-table td {
+    text-align: left;
+    border-bottom: 1px solid #e4ebf6;
+    padding: 0.55rem 0.35rem;
+}
+
+.session-history-table th {
+    color: #42618f;
+    font-weight: 700;
+}
+
+.session-history-table td {
+    color: #3f5477;
+}
+
+.session-history-table tbody tr {
+    cursor: pointer;
+}
+
+.session-history-table tbody tr:hover {
+    background: #f2f6fd;
+}
+
+.session-history-table .score-good {
+    color: #2f8f46;
+    background: transparent;
+}
+
+.session-history-table .score-medium {
+    color: #a07318;
+    background: transparent;
+}
+
+.session-history-table .score-poor {
+    color: #b74252;
+    background: transparent;
+}
+
+.posture-insight-card {
+    padding: 1rem;
+}
+
+.insight-message {
+    margin-top: 0.65rem;
+    color: #2f4f7c;
+    font-size: 1.35rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.insight-tip-box {
+    margin-top: 0.85rem;
+    border-top: 1px solid #dfe6f2;
+    padding-top: 0.75rem;
+    color: #5c7194;
+}
+
+.insight-tip-label {
+    color: #4f6f9f;
+    font-weight: 700;
+}
+
 .session-card {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -556,6 +751,10 @@ h3 {
         grid-template-columns: 1fr;
     }
 
+    .insight-layout {
+        grid-template-columns: 1fr;
+    }
+
     .dashboard-header {
         flex-direction: column;
         align-items: flex-start;
@@ -568,6 +767,16 @@ h3 {
 
     .stat-value {
         font-size: 1.9rem;
+    }
+
+    .health-score-value {
+        font-size: 1.8rem;
+    }
+
+    .monitor-status-text,
+    .health-status-line,
+    .insight-message {
+        font-size: 1.05rem;
     }
 
     .session-card-details {
