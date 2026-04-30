@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}PostureHealthTracker{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20260307') }}">
+    
+    <!-- Firebase SDKs (Required for Hardware Integration) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    // THIS LINE BELOW IS LIKELY MISSING OR WRONG
+    databaseURL: "https://your-project-id-default-rtdb.firebaseio.com", 
+    projectId: "YOUR_PROJECT_ID",
+    // ...
+  };
+  
+  firebase.initializeApp(firebaseConfig);
+</script>
 </head>
 <body>
     {% if session.user_id %}
@@ -35,9 +52,9 @@
     </div>
 
     <footer class="footer">
-        <p>&copy; 2025 PostureHealthTracker. All rights reserved.</p>
+        <p>&copy; 2026 PostureHealthTracker. All rights reserved.</p>
     </footer>
 
-    <script src="{{ url_for('static', filename='js/session-monitor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/session-monitor.js') }}?v=1.0"></script>
 </body>
 </html>

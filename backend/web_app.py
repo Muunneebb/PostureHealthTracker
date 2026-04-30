@@ -8,10 +8,29 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import inspect, text
 import sqlite3
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posture_tracker.db'
+base_dir = os.path.dirname(os.path.abspath(__file__))
+# This points to the project root (one level up)
+project_root = os.path.dirname(base_dir)
+
+template_dir = os.path.join(project_root, 'frontend', 'templates')
+static_dir = os.path.join(project_root, 'frontend', 'static')
+
+app = Flask(__name__, 
+            template_folder=template_dir,
+            static_folder=static_dir)
+
+# --- CONFIG ---
+app.config['SECRET_KEY'] = 'your-secret-key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'posture_tracker.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# --- DEBUG PRINT ---
+# When you run the script, check these in your terminal to see if they are right
+print(f"--- FOLDER VERIFICATION ---")
+print(f"Project Root: {project_root}")
+print(f"Templates:    {template_dir}")
+print(f"Static:       {static_dir}")
+print(f"---------------------------")
 
 # Each posture alert (buzzer trigger) reduces the session score by 1%.
 POSTURE_ALERT_SCORE_PENALTY = 0.01
@@ -187,6 +206,12 @@ def ensure_session_schema_columns():
 
 
 # Routes
+@app.route('/api/debug-users')
+def debug_users():
+    users = User.query.all()
+    return jsonify([{'username': u.username, 'email': u.email} for u in users])
+
+
 @app.route('/')
 def index():
     if 'user_id' in session:
@@ -319,10 +344,14 @@ def view_session(session_id):
     return render_template('session_detail.html', session=session_data)
 
 
+# API endpoints modified for hardware (Removed @login_required)
 @app.route('/api/start-session', methods=['POST'])
-@login_required
 def start_session():
-    user_id = session['user_id']
+    # Fallback for Hardware: Use provided user_id or default to the first user in the DB
+    user_id = session.get('user_id')
+    if user_id is None:
+        data = request.get_json() or {}
+        user_id = data.get('user_id', 1) 
     
     # End any existing active session
     active = Session.query.filter_by(user_id=user_id, end_time=None).first()
@@ -355,10 +384,9 @@ def start_session():
 
 
 @app.route('/api/session/<int:session_id>/readings', methods=['POST'])
-@login_required
 def add_reading(session_id):
-    user_id = session['user_id']
-    sess = Session.query.filter_by(id=session_id, user_id=user_id).first()
+    # Hardware bypass: Check session exists regardless of login
+    sess = Session.query.filter_by(id=session_id).first()
 
     if not sess:
         return jsonify({'error': 'Session not found'}), 404
@@ -438,10 +466,8 @@ def add_reading(session_id):
 
 
 @app.route('/api/session/<int:session_id>/end', methods=['POST'])
-@login_required
 def end_session(session_id):
-    user_id = session['user_id']
-    sess = Session.query.filter_by(id=session_id, user_id=user_id).first()
+    sess = Session.query.filter_by(id=session_id).first()
 
     if not sess:
         return jsonify({'error': 'Session not found'}), 404
@@ -502,13 +528,6 @@ def get_session_stats(session_id):
 @app.route('/api/session/<int:session_id>/readings', methods=['GET'])
 @login_required
 def get_session_readings(session_id):
-    """Fetch readings for real-time UI updates.
-
-    Query params:
-    - since_id: return rows with id > since_id (incremental polling)
-    - limit: max rows to return (default 100, max 500)
-    - latest: when true, return the most recent `limit` rows
-    """
     user_id = session['user_id']
     sess = Session.query.filter_by(id=session_id, user_id=user_id).first()
 
@@ -572,4 +591,20 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         ensure_session_schema_columns()
+        
+        # Find the existing 'demo' user we saw in the debug list
+        user = User.query.filter_by(username='demo').first()
+        
+        if user:
+            print("--- RESETTING 'DEMO' PASSWORD ---")
+            user.set_password('demo123') # This hashes it correctly
+            db.session.commit()
+            print("Password for 'demo' is now: demo123")
+        else:
+            print("--- 'DEMO' USER NOT FOUND, CREATING NEW ONE ---")
+            new_user = User(username='demo', email='demo@demo.com')
+            new_user.set_password('demo123')
+            db.session.add(new_user)
+            db.session.commit()
+
     app.run(debug=True, host='0.0.0.0', port=5000)
