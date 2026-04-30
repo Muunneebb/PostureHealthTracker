@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - PostureHealthTracker</title>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+<style>
+
+.medical-dashboard {
+    max-width: 1120px;
+    margin: 0 auto;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.summary-card {
+    background: #f4f6fb;
+    border: 1px solid #dbe2ef;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08);
+    position: relative;
+}
+
+.summary-card::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    border-radius: 0 0 12px 12px;
+    background: linear-gradient(90deg, #70b87f 0%, #48a2f3 100%);
+}
+
+.summary-label {
+    color: #37517d;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+
+.summary-value {
+    color: #1f3f72;
+    font-size: 2.4rem;
+    line-height: 1;
+    font-weight: 700;
+}
+
+.summary-value.compact {
+    font-size: 2.1rem;
+}
+
+.panel {
+    background: #f8f9fd;
+    border: 1px solid #dbe2ef;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08);
+    margin-bottom: 1rem;
+}
+
+.panel-head {
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid #d6dcea;
+}
+
+.panel-title {
+    margin: 0;
+    color: #24426f;
+    font-size: 1.45rem;
+    font-weight: 600;
+}
+
+.panel-body {
+    padding: 1rem 1.25rem;
+}
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    color: #314b75;
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.status-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #a5afc4;
+    display: inline-block;
+}
+
+.status-dot.active {
+    background: #42b86f;
+    box-shadow: 0 0 0 4px rgba(66, 184, 111, 0.22);
+}
+
+.status-subtext {
+    color: #667898;
+    font-size: 0.98rem;
+    margin: 0 0 1rem;
+}
+
+.monitor-action {
+    display: flex;
+    justify-content: center;
+}
+
+.monitor-btn {
+    min-width: 260px;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 10px 20px;
+    cursor: pointer;
+    border: none;
+    color: white;
+}
+
+.btn-primary { background-color: #48a2f3; }
+.btn-stop { background-color: #be3f3f; }
+
+.score-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.8rem;
+    align-items: center;
+}
+
+.score-track {
+    position: relative;
+    height: 22px;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid #cad3e5;
+    background: linear-gradient(90deg, #76c68a 0%, #a8cf44 24%, #e5af3e 48%, #df6e48 72%, #cad1dd 100%);
+}
+
+.score-marker {
+    position: absolute;
+    top: -5px;
+    width: 3px;
+    height: 32px;
+    background: #24395f;
+    transition: left 0.5s ease;
+}
+
+.score-value {
+    color: #1f3f72;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.score-status {
+    margin-top: 0.9rem;
+    color: #4a5d7f;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.score-status.alert {
+    color: #996515;
+}
+
+.layout-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 0.95rem;
+    align-items: start;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.history-table th {
+    color: #3a527d;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: left;
+    border-bottom: 1px solid #d8deea;
+    padding: 0.65rem 0.4rem;
+}
+
+.history-table td {
+    color: #3f5272;
+    font-size: 0.95rem;
+    border-bottom: 1px solid #e5e9f2;
+    padding: 0.65rem 0.4rem;
+}
+
+.history-table tbody tr {
+    cursor: pointer;
+}
+
+.history-table tbody tr:hover {
+    background: #f0f4fb;
+}
+
+.score-good { color: #2f8f46; font-weight: 700; }
+.score-medium { color: #996515; font-weight: 700; }
+.score-poor { color: #be3f3f; font-weight: 700; }
+
+.insight-box {
+    background: #f2f4fb;
+    border: 1px solid #d8dff0;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08);
+    padding: 1rem;
+}
+
+.insight-title {
+    color: #365688;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0 0 0.8rem;
+}
+
+.insight-text {
+    color: #2f4f7c;
+    font-size: 1.1rem;
+    line-height: 1.45;
+    margin: 0 0 0.8rem;
+}
+
+.tip {
+    border-top: 1px solid #d6dded;
+    padding-top: 0.8rem;
+    color: #5a6d8e;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.advanced-wrap {
+    margin-top: 1rem;
+}
+
+.advanced-toggle {
+    list-style: none;
+    cursor: pointer;
+    color: #355781;
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #d6ddeb;
+    border-radius: 8px;
+    background: #f3f6fb;
+}
+
+.advanced-content {
+    margin-top: 0.8rem;
+}
+
+.mini-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+}
+
+.mini-card {
+    background: #ffffff;
+    border: 1px solid #dce2ef;
+    border-radius: 8px;
+    padding: 0.8rem;
+}
+
+.mini-label {
+    color: #4f6389;
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+.mini-value {
+    color: #244a7f;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.break-status {
+    margin: 0 0 1rem;
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    background: #e8f6ec;
+    border-left: 4px solid #41b56c;
+    color: #21653a;
+    font-weight: 600;
+}
+
+.break-status.take-break-needed {
+    background: #fff4de;
+    border-left-color: #d4982f;
+    color: #875f15;
+}
+
+.live-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.live-table th,
+.live-table td {
+    font-size: 0.82rem;
+    border-bottom: 1px solid #e2e8f3;
+    padding: 0.5rem;
+    text-align: left;
+    color: #3d5175;
+}
+
+@media (max-width: 980px) {
+    .summary-grid { grid-template-columns: 1fr; }
+    .layout-grid { grid-template-columns: 1fr; }
+    .summary-value { font-size: 2rem; }
+    .panel-title { font-size: 1.2rem; }
+    .status-row { font-size: 1.05rem; }
+    .score-value { font-size: 2rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="medical-dashboard">
+    
+    <!-- TOP METRICS -->
+    <section class="summary-grid">
+        <article class="summary-card">
+            <p class="summary-label">Total Sessions</p>
+            <p class="summary-value" id="valTotalSessions">--</p>
+        </article>
+        <article class="summary-card">
+            <p class="summary-label">Avg Posture Score</p>
+            <p class="summary-value" id="valAvgScore">--%</p>
+        </article>
+        <article class="summary-card">
+            <p class="summary-label">Total Sitting Time</p>
+            <p class="summary-value compact" id="valTotalTime">--h --m</p>
+        </article>
+    </section>
+
+    <!-- SESSION CONTROLS -->
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Current Monitoring Session</h3>
+        </div>
+        <div class="panel-body">
+            <div class="status-row">
+                <span id="uiStatusDot" class="status-dot"></span>
+                <span id="uiStatusText">Status: Not Active</span>
+            </div>
+            <p class="status-subtext" id="uiStatusSubtext">
+                No monitoring session running.
+            </p>
+            <div class="monitor-action">
+                <!-- Javascript will toggle this button's text and style -->
+                <button id="mainActionButton" class="btn btn-primary monitor-btn" onclick="toggleSession()">Start Monitoring</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- SCORE PROGRESS BAR -->
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Posture Health Score</h3>
+        </div>
+        <div class="panel-body">
+            <div class="score-wrap">
+                <div class="score-track">
+                    <span id="uiScoreMarker" class="score-marker" style="left: 0%;"></span>
+                </div>
+                <div id="uiScoreValue" class="score-value">--%</div>
+            </div>
+            <p id="uiScoreStatus" class="score-status">
+                Status: Waiting for data...
+            </p>
+        </div>
+    </section>
+
+    <!-- HISTORY & INSIGHTS -->
+    <section class="layout-grid">
+        <article class="panel">
+            <div class="panel-head">
+                <h3 class="panel-title">Session History</h3>
+            </div>
+            <div class="panel-body">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Duration</th>
+                            <th>Posture Score</th>
+                            <th>Alerts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <tr><td colspan="4">Loading session history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+        <aside class="insight-box">
+            <h3 class="insight-title">Posture Insight</h3>
+            <p class="insight-text" id="uiInsightText">Connecting to database to generate insights...</p>
+            <div class="tip" id="uiInsightTip">
+                <strong>Tip:</strong> Keep shoulders relaxed, feet flat, and place your screen at eye level.
+            </div>
+        </aside>
+    </section>
+
+    <!-- ADVANCED LIVE MONITORING -->
+    <div class="advanced-wrap">
+        <details>
+            <summary class="advanced-toggle">Advanced Live Monitoring</summary>
+            <div class="advanced-content">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3 class="panel-title">Break Tracker</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="mini-grid">
+                            <div class="mini-card">
+                                <p class="mini-label">Breaks Taken</p>
+                                <p class="mini-value" id="breakCountValue">0</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Last Break</p>
+                                <p class="mini-value" id="lastBreakTime">No break taken yet</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Next Break Due</p>
+                                <p class="mini-value" id="nextBreakTime">Not available</p>
+                            </div>
+                        </div>
+                        <p class="break-status" id="takeBreakStatus">
+                            You are on track. No break needed yet.
+                        </p>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3 class="panel-title">Live Sensor Feed</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="mini-grid">
+                            <div class="mini-card">
+                                <p class="mini-label">Last Packet</p>
+                                <p class="mini-value" id="liveSensorTimestamp">Waiting for data...</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Reading Count</p>
+                                <p class="mini-value" id="liveReadingCount">0</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Pitch</p>
+                                <p class="mini-value" id="livePitch">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Roll</p>
+                                <p class="mini-value" id="liveRoll">-</p>
+                            </div>
+                            <div class="mini-card">
+                                <p class="mini-label">Stress</p>
+                                <p class="mini-value" id="liveStress">-</p>
+                            </div>
+                        </div>
+
+                        <table class="live-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Pitch</th>
+                                    <th>Roll</th>
+                                    <th>Stress</th>
+                                    <th>Seated</th>
+                                    <th>Buzzer</th>
+                                </tr>
+                            </thead>
+                            <tbody id="liveReadingsBody">
+                                <tr>
+                                    <td colspan="6">Waiting for incoming sensor packets...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </details>
+    </div>
+
+</div>
+
+<!-- 2. SERVERLESS JAVASCRIPT LOGIC -->
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyDhVpz_D9OTfckaLA792N0c-bqmGnBd7G4",
+    authDomain: "posturehealthtracker.firebaseapp.com",
+    projectId: "posturehealthtracker",
+    storageBucket: "posturehealthtracker.firebasestorage.app",
+    messagingSenderId: "330967946233",
+    appId: "1:330967946233:web:995732d6b544e67a46e328",
+    measurementId: "G-5YG2GL2W9Z"
+};
+
+// Initialize Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+
+const db = firebase.database();       // For live rapid sensor data
+const firestore = firebase.firestore(); // For saving long-term session history
+</script>
+
+</body>
+</html>
