@@ -241,8 +241,8 @@ const firestore = firebase.firestore();
 const auth = firebase.auth();
 
 let currentUser = null;
-let currentSessionStartTime = null;
-let latestLiveScore = 100; 
+let currentSessionStartTime = localStorage.getItem('sessionStartTime') ? new Date(localStorage.getItem('sessionStartTime')) : null;
+let latestLiveScore = 100;
 
 // 1. AUTHENTICATION & DATA LOADING
 auth.onAuthStateChanged(user => {
@@ -359,16 +359,22 @@ window.toggleSession = async function() {
         if (!isSessionActive) {
             // STARTING
             currentSessionStartTime = new Date();
+            localStorage.setItem('sessionStartTime', currentSessionStartTime.toISOString());
             await db.ref('system_state').update({ camera_command: "ON" });
         } else {
             // STOPPING & SAVING
             await db.ref('system_state').update({ camera_command: "OFF" });
-            
+
+            // Recover start time from localStorage if page was refreshed mid-session
+            if (!currentSessionStartTime) {
+                const stored = localStorage.getItem('sessionStartTime');
+                if (stored) currentSessionStartTime = new Date(stored);
+            }
+
             if (currentSessionStartTime && currentUser) {
                 const endTime = new Date();
                 const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
-                
-                // FIXED: Removed the 10-second limit. It will save the session even if you test it for 1 second!
+
                 try {
                     await firestore.collection('sessions').add({
                         userId: currentUser.uid,
@@ -380,12 +386,17 @@ window.toggleSession = async function() {
                         sessionScore: latestLiveScore / 100,
                         createdAt: firebase.firestore.Timestamp.fromDate(endTime)
                     });
-                    
-                    loadDashboardData(currentUser.uid); // Refresh table immediately
+
+                    localStorage.removeItem('sessionStartTime');
+                    currentSessionStartTime = null;
+                    loadDashboardData(currentUser.uid);
                 } catch (saveError) {
                     alert("Failed to save session to history! Check your Firestore Rules.");
                     console.error(saveError);
                 }
+            } else {
+                localStorage.removeItem('sessionStartTime');
+                currentSessionStartTime = null;
             }
         }
     } catch (error) { 
