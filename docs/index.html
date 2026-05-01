@@ -353,32 +353,24 @@ db.ref('system_state/camera_command').on('value', (snapshot) => {
 });
 
 window.toggleSession = async function() {
-    console.log("[toggleSession] fired. isSessionActive:", isSessionActive, "| currentUser:", currentUser?.uid, "| currentSessionStartTime:", currentSessionStartTime);
     try {
         if (!isSessionActive) {
             currentSessionStartTime = new Date();
             localStorage.setItem('sessionStartTime', currentSessionStartTime.toISOString());
-            console.log("[toggleSession] STARTING session at", currentSessionStartTime.toISOString());
             await db.ref('system_state').update({ camera_command: "ON" });
         } else {
-            console.log("[toggleSession] STOPPING session.");
-
-            // Save to Firestore FIRST before touching Realtime DB
+            // Save to Firestore BEFORE touching Realtime DB so a hanging RTDB write doesn't block the save
             if (!currentSessionStartTime) {
                 const stored = localStorage.getItem('sessionStartTime');
-                console.log("[toggleSession] startTime not in memory, localStorage value:", stored);
                 if (stored) currentSessionStartTime = new Date(stored);
             }
-
-            console.log("[toggleSession] currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser?.uid);
 
             if (currentSessionStartTime && currentUser) {
                 const endTime = new Date();
                 const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
-                console.log("[toggleSession] Saving to Firestore. Duration:", durationSeconds, "s | Score:", latestLiveScore);
 
                 try {
-                    const docRef = await firestore.collection('sessions').add({
+                    await firestore.collection('sessions').add({
                         userId: currentUser.uid,
                         username: currentUser.displayName || "User",
                         startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
@@ -388,25 +380,21 @@ window.toggleSession = async function() {
                         sessionScore: latestLiveScore / 100,
                         createdAt: firebase.firestore.Timestamp.fromDate(endTime)
                     });
-                    console.log("[toggleSession] Session saved! Doc ID:", docRef.id);
                     localStorage.removeItem('sessionStartTime');
                     currentSessionStartTime = null;
                 } catch (saveError) {
-                    console.error("[toggleSession] Firestore save FAILED:", saveError);
+                    console.error("Firestore save failed:", saveError);
                     alert("Save failed: " + saveError.message);
                 }
             } else {
-                console.warn("[toggleSession] Skipped save. currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser);
                 localStorage.removeItem('sessionStartTime');
                 currentSessionStartTime = null;
             }
 
-            console.log("[toggleSession] Updating RTDB camera_command OFF...");
             await db.ref('system_state').update({ camera_command: "OFF" });
-            console.log("[toggleSession] RTDB update done.");
         }
     } catch (error) {
-        console.error("[toggleSession] Outer error:", error);
+        console.error("toggleSession error:", error);
         alert("Database connection failed: " + error.message);
     }
 };
