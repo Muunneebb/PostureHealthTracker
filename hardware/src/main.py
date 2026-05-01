@@ -1,5 +1,8 @@
 import time
 import os
+import json
+import shlex
+import subprocess
 from datetime import datetime
 from importlib import import_module
 import requests # <-- ADDED: To talk directly to the cloud
@@ -16,8 +19,13 @@ else:
 # ==========================================
 # This connects your Pi directly to the website without Flask
 FIREBASE_URL = "https://posturehealthtracker-default-rtdb.firebaseio.com"
+HAILO_STATUS_FILE = "/tmp/posturehealthtracker_hailo.json"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HAILO_SCRIPT = os.path.join(REPO_ROOT, "src", "pose_estimation.py")
+HAILO_EXAMPLES_DIR = os.environ.get("HAILO_EXAMPLES_DIR", os.path.expanduser("~/hailo-rpi5-examples"))
 
 firestore_client = None
+hailo_process = None
 
 
 def get_firestore_client():
@@ -50,6 +58,65 @@ def push_live_data(payload):
         requests.put(f"{FIREBASE_URL}/live_data.json", json=payload, timeout=30)
     except:
         pass  # Silently skip failed writes
+
+
+def read_hailo_status():
+    if not os.path.exists(HAILO_STATUS_FILE):
+        return None
+
+    try:
+        with open(HAILO_STATUS_FILE, "r", encoding="utf-8") as status_file:
+            return json.load(status_file)
+    except Exception:
+        return None
+
+
+def start_hailo_process():
+    global hailo_process
+
+    if hailo_process and hailo_process.poll() is None:
+        return True
+
+    if not os.path.exists(HAILO_SCRIPT):
+        print(f"Hailo script not found at {HAILO_SCRIPT}")
+        return False
+
+    command = (
+        f"cd {shlex.quote(HAILO_EXAMPLES_DIR)} && "
+        f"source setup_env.sh && "
+        f"python {shlex.quote(HAILO_SCRIPT)} --input rpi --use-frame"
+    )
+
+    try:
+        hailo_process = subprocess.Popen(
+            ["bash", "-lc", command],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception as error:
+        print(f"Failed to start Hailo process: {error}")
+        hailo_process = None
+        return False
+
+
+def stop_hailo_process():
+    global hailo_process
+
+    if not hailo_process:
+        return
+
+    try:
+        if hailo_process.poll() is None:
+            hailo_process.terminate()
+            try:
+                hailo_process.wait(timeout=5)
+            except Exception:
+                hailo_process.kill()
+    except Exception:
+        pass
+    finally:
+        hailo_process = None
 
 
 def save_reading(session_id, payload):
@@ -101,12 +168,14 @@ def main_loop():
 
     active_session_id = None
     camera_started_for_session = False
+    using_hailo_pipeline = False
     session_frame_count = 0
     session_score_total = 0.0
     last_preview_update = 0.0
     last_preview_data_url = None
     last_camera_metrics = {}
     last_frame_score = 100
+    last_hailo_update_at = None
     
     print("Hardware Booted. Connecting to Firebase...")
 
@@ -123,44 +192,62 @@ def main_loop():
                     if requested_session_id and requested_session_id != active_session_id:
                         active_session_id = requested_session_id
                         camera_started_for_session = False
+                        using_hailo_pipeline = False
                         session_frame_count = 0
                         session_score_total = 0.0
                         last_preview_update = 0.0
                         last_preview_data_url = None
                         last_camera_metrics = {}
                         last_frame_score = 100
+                        last_hailo_update_at = None
 
                     if not camera_started_for_session:
-                        camera_started_for_session = cam.start()
+                        using_hailo_pipeline = start_hailo_process()
+                        if not using_hailo_pipeline:
+                            camera_started_for_session = cam.start()
+                        else:
+                            camera_started_for_session = True
 
-                    now = time.time()
-                    if cam.available and (now - last_preview_update) >= 2.0:
-                        overlay_lines = [
-                            "Posture Tracking Live",
-                            f"Frame Score: {last_frame_score}%",
-                            f"Session Score: {int(round(session_score_total / session_frame_count)) if session_frame_count else 100}%"
-                        ]
-                        preview_data_url, camera_metrics = cam.capture_preview_and_metrics(overlay_lines=overlay_lines)
-                        last_preview_update = now
-                        if camera_metrics:
-                            last_camera_metrics = camera_metrics
-                            last_frame_score = score_from_camera_metrics(camera_metrics)
+                    if using_hailo_pipeline:
+                        hailo_status = read_hailo_status() or {}
+                        hailo_updated_at = hailo_status.get("updatedAt")
+                        if hailo_status and hailo_updated_at != last_hailo_update_at:
+                            last_hailo_update_at = hailo_updated_at
+                            last_preview_data_url = hailo_status.get("cameraFrame", last_preview_data_url)
+                            last_camera_metrics = hailo_status.get("cameraMetrics", last_camera_metrics) or {}
+                            last_frame_score = score_from_camera_metrics(last_camera_metrics)
                             session_frame_count += 1
                             session_score_total += last_frame_score
-                            last_preview_data_url = preview_data_url
+                        camera_active = True
+                    else:
+                        now = time.time()
+                        if cam.available and (now - last_preview_update) >= 2.0:
+                            overlay_lines = [
+                                "Posture Tracking Live",
+                                f"Frame Score: {last_frame_score}%",
+                                f"Session Score: {int(round(session_score_total / session_frame_count)) if session_frame_count else 100}%"
+                            ]
+                            preview_data_url, camera_metrics = cam.capture_preview_and_metrics(overlay_lines=overlay_lines)
+                            last_preview_update = now
+                            if camera_metrics:
+                                last_camera_metrics = camera_metrics
+                                last_frame_score = score_from_camera_metrics(camera_metrics)
+                                session_frame_count += 1
+                                session_score_total += last_frame_score
+                                last_preview_data_url = preview_data_url
 
-                            save_reading(active_session_id, {
-                                "timestamp": datetime.utcnow(),
-                                "frameScore": last_frame_score,
-                                "sessionScore": round(session_score_total / session_frame_count, 2),
-                                "cameraMetrics": last_camera_metrics,
-                                "postureStatus": "Good" if not last_camera_metrics.get('is_bad') else "Bad",
-                                "postureReason": last_camera_metrics.get('reason', '')
-                            })
+                                save_reading(active_session_id, {
+                                    "timestamp": datetime.utcnow(),
+                                    "frameScore": last_frame_score,
+                                    "sessionScore": round(session_score_total / session_frame_count, 2),
+                                    "cameraMetrics": last_camera_metrics,
+                                    "postureStatus": "Good" if not last_camera_metrics.get('is_bad') else "Bad",
+                                    "postureReason": last_camera_metrics.get('reason', '')
+                                })
+
+                        camera_active = bool(cam.available and camera_started_for_session)
 
                     session_score = int(round(session_score_total / session_frame_count)) if session_frame_count else last_frame_score
-
-                    camera_active = bool(cam.available and camera_started_for_session)
 
                     # Extract posture status if available (Hailo detection)
                     posture_status = "Good" if not last_camera_metrics.get('is_bad') else "Bad"
@@ -184,7 +271,9 @@ def main_loop():
                     # Website says "OFF", so we just standby quietly
                     if camera_started_for_session:
                         cam.stop()
+                        stop_hailo_process()
                         camera_started_for_session = False
+                        using_hailo_pipeline = False
                         active_session_id = None
                         session_frame_count = 0
                         session_score_total = 0.0
@@ -192,6 +281,7 @@ def main_loop():
                         last_preview_data_url = None
                         last_camera_metrics = {}
                         last_frame_score = 100
+                        last_hailo_update_at = None
                     
             except Exception as e:
                 print(f"Network Error: {e}")

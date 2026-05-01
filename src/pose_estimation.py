@@ -1,4 +1,6 @@
 from pathlib import Path
+import base64
+import json
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
@@ -9,6 +11,8 @@ import hailo
 from hailo_apps.hailo_app_python.core.common.buffer_utils import get_caps_from_pad, get_numpy_from_buffer
 from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import app_callback_class
 from hailo_apps.hailo_app_python.apps.pose_estimation.pose_estimation_pipeline import GStreamerPoseEstimationApp
+
+STATUS_FILE = Path('/tmp/posturehealthtracker_hailo.json')
 
 # ── Side view thresholds ────────────────────────
 HEAD_FORWARD_THRESHOLD     = 12 # pixels — how far ear is in front of shoulder
@@ -81,6 +85,41 @@ def draw_ui(frame, is_bad, alert, reason, w, h):
         cv2.putText(frame, msg, ((w-mw)//2, h-50),
                     cv2.FONT_HERSHEY_DUPLEX, 1.4, (255,255,255), 2)
 
+def publish_status(frame, is_bad, reason, w, h):
+    preview = frame
+    if preview is not None and len(preview.shape) == 3 and preview.shape[1] > 360:
+        height, width = preview.shape[:2]
+        target_width = 360
+        target_height = int(height * (target_width / width))
+        preview = cv2.resize(preview, (target_width, target_height))
+
+    if preview is None:
+        return
+
+    ok, buffer = cv2.imencode('.jpg', preview, [int(cv2.IMWRITE_JPEG_QUALITY), 72])
+    if not ok:
+        return
+
+    payload = {
+        'score': 95 if not is_bad else 55,
+        'frameScore': 95 if not is_bad else 55,
+        'sessionScore': 95 if not is_bad else 55,
+        'cameraActive': True,
+        'cameraFrame': 'data:image/jpeg;base64,' + base64.b64encode(buffer).decode('ascii'),
+        'cameraMetrics': {
+            'is_bad': is_bad,
+            'reason': reason,
+        },
+        'postureStatus': 'Good' if not is_bad else 'Bad',
+        'postureReason': reason,
+        'updatedAt': int(time.time())
+    }
+
+    try:
+        STATUS_FILE.write_text(json.dumps(payload))
+    except Exception:
+        pass
+
 def get_keypoints():
     return {
         'nose': 0,
@@ -147,6 +186,7 @@ def app_callback(pad, info, user_data):
 
         if frame is not None:
             draw_ui(frame, is_bad, alerting, reason, width, height)
+            publish_status(frame, is_bad, reason, width, height)
         break
 
     if not found and frame is not None:
@@ -154,6 +194,7 @@ def app_callback(pad, info, user_data):
         alerting  = False
         cv2.putText(frame, "No person detected", (20, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,165,255), 2)
+        publish_status(frame, False, 'No person detected', width, height)
 
     if frame is not None:
         user_data.set_frame(frame)
