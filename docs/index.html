@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - PostureHealthTracker</title>
 
-    <!-- FIREBASE LIBRARIES (Added Firestore for History) -->
+    <!-- FIREBASE LIBRARIES -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -84,10 +84,25 @@ body {
 .btn-primary { background-color: #48a2f3; }
 .btn-stop { background-color: #be3f3f; }
 
+/* FIXED SCORE BAR CSS */
 .score-wrap { display: grid; grid-template-columns: 1fr auto; gap: 0.8rem; align-items: center; }
-.score-track { position: relative; height: 22px; border-radius: 999px; overflow: hidden; border: 1px solid #cad3e5; background: linear-gradient(90deg, #76c68a 0%, #a8cf44 24%, #e5af3e 48%, #df6e48 72%, #cad1dd 100%); }
-.score-marker { position: absolute; top: -5px; width: 3px; height: 32px; background: #24395f; transition: left 0.5s ease; }
-.score-value { color: #1f3f72; font-size: 2rem; font-weight: 700; margin: 0; }
+.score-track { 
+    position: relative; 
+    height: 22px; 
+    border-radius: 999px; 
+    border: 1px solid #cad3e5; 
+    background: linear-gradient(90deg, #be3f3f 0%, #e5af3e 50%, #42b86f 100%); 
+}
+.score-marker { 
+    position: absolute; 
+    top: -5px; 
+    width: 6px; /* Thicker line */
+    height: 32px; 
+    background: #24395f; 
+    border-radius: 3px; 
+    transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1); /* Smooth sliding */
+}
+.score-value { color: #1f3f72; font-size: 2rem; font-weight: 700; margin: 0; min-width: 80px; text-align: right; }
 .score-status { margin-top: 0.9rem; color: #4a5d7f; font-size: 1rem; font-weight: 600; margin-bottom: 0; }
 .score-status.alert { color: #996515; }
 
@@ -102,10 +117,6 @@ body {
 .insight-title { color: #365688; font-size: 1.4rem; font-weight: 700; margin: 0 0 0.8rem; }
 .insight-text { color: #2f4f7c; font-size: 1.1rem; line-height: 1.45; margin: 0 0 0.8rem; }
 .tip { border-top: 1px solid #d6dded; padding-top: 0.8rem; color: #5a6d8e; font-size: 0.95rem; line-height: 1.5; margin: 0; }
-
-.advanced-wrap { margin-top: 1rem; }
-.advanced-toggle { list-style: none; cursor: pointer; color: #355781; font-weight: 700; font-size: 0.95rem; padding: 0.85rem 1rem; border: 1px solid #d6ddeb; border-radius: 8px; background: #f3f6fb; }
-.advanced-toggle::-webkit-details-marker { display: none; }
 </style>
 </head>
 <body>
@@ -128,15 +139,15 @@ body {
     <section class="summary-grid">
         <article class="summary-card">
             <p class="summary-label">Total Sessions</p>
-            <p class="summary-value" id="valTotalSessions">--</p>
+            <p class="summary-value" id="valTotalSessions">0</p>
         </article>
         <article class="summary-card">
             <p class="summary-label">Avg Posture Score</p>
-            <p class="summary-value" id="valAvgScore">--%</p>
+            <p class="summary-value" id="valAvgScore">0%</p>
         </article>
         <article class="summary-card">
             <p class="summary-label">Total Sitting Time</p>
-            <p class="summary-value compact" id="valTotalTime">--h --m</p>
+            <p class="summary-value compact" id="valTotalTime">0h 0m</p>
         </article>
     </section>
 
@@ -162,17 +173,19 @@ body {
     <!-- SCORE PROGRESS BAR -->
     <section class="panel">
         <div class="panel-head">
-            <h3 class="panel-title">Posture Health Score</h3>
+            <h3 class="panel-title">Live Posture Health Score</h3>
         </div>
         <div class="panel-body">
             <div class="score-wrap">
                 <div class="score-track">
-                    <span id="uiScoreMarker" class="score-marker" style="left: 0%;"></span>
+                    <!-- FIXED: Defaults perfectly to the right edge so it doesn't bleed -->
+                    <span id="uiScoreMarker" class="score-marker" style="left: calc(98% - 3px);"></span>
                 </div>
-                <div id="uiScoreValue" class="score-value">--%</div>
+                <!-- FIXED: Defaults to 100% instead of --% -->
+                <div id="uiScoreValue" class="score-value">100%</div>
             </div>
             <p id="uiScoreStatus" class="score-status">
-                Status: Waiting for data...
+                Status: Ready (Hardware disconnected)
             </p>
         </div>
     </section>
@@ -223,13 +236,13 @@ const firebaseConfig = {
 };
 
 if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
-const db = firebase.database();       // For live hardware tracking
-const firestore = firebase.firestore(); // For saving session history
+const db = firebase.database();       
+const firestore = firebase.firestore(); 
 const auth = firebase.auth();
 
 let currentUser = null;
 let currentSessionStartTime = null;
-let latestLiveScore = 100; // Tracks the most recent score for saving
+let latestLiveScore = 100; 
 
 // 1. AUTHENTICATION & DATA LOADING
 auth.onAuthStateChanged(user => {
@@ -246,7 +259,7 @@ function handleLogout() {
     auth.signOut().then(() => { window.location.href = 'login.html'; });
 }
 
-// 2. FETCH HISTORICAL DATA (Fills in the -- numbers)
+// 2. FETCH HISTORICAL DATA
 async function loadDashboardData(uid) {
     try {
         const snapshot = await firestore.collection('sessions')
@@ -257,7 +270,7 @@ async function loadDashboardData(uid) {
             document.getElementById('valTotalSessions').innerText = "0";
             document.getElementById('valAvgScore').innerText = "0%";
             document.getElementById('valTotalTime').innerText = "0h 0m";
-            document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center;'>No sessions yet. Click start!</td></tr>";
+            document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center;'>No sessions yet. Click start to begin!</td></tr>";
             document.getElementById('uiInsightText').innerText = "Start your first session to generate insights.";
             return;
         }
@@ -266,7 +279,6 @@ async function loadDashboardData(uid) {
         let totalDuration = 0;
         let sessions = [];
 
-        // Collect all data
         snapshot.forEach(doc => {
             const data = doc.data();
             sessions.push({ id: doc.id, ...data });
@@ -274,10 +286,8 @@ async function loadDashboardData(uid) {
             totalDuration += (data.duration || 0);
         });
 
-        // Sort by Date (Newest first)
         sessions.sort((a, b) => b.startTime.toDate() - a.startTime.toDate());
 
-        // Update Top Cards
         const avgScore = Math.round((totalScore / sessions.length) * 100);
         const hours = Math.floor(totalDuration / 3600);
         const mins = Math.floor((totalDuration % 3600) / 60);
@@ -286,7 +296,6 @@ async function loadDashboardData(uid) {
         document.getElementById('valAvgScore').innerText = avgScore + "%";
         document.getElementById('valTotalTime').innerText = `${hours}h ${mins}m`;
 
-        // Update Insight Text
         if (sessions.length >= 2) {
             const lastScore = Math.round((sessions[0].sessionScore || 0) * 100);
             const prevScore = Math.round((sessions[1].sessionScore || 0) * 100);
@@ -296,12 +305,11 @@ async function loadDashboardData(uid) {
             else document.getElementById('uiInsightText').innerText = `Your posture score was stable in your last session.`;
         }
 
-        // Fill Table (Top 6)
         let html = "";
         for (let i = 0; i < Math.min(6, sessions.length); i++) {
             const s = sessions[i];
             const dateStr = s.startTime.toDate().toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
-            const durMin = Math.round((s.duration || 0) / 60);
+            const durMin = Math.max(1, Math.round((s.duration || 0) / 60)); // Ensure it shows at least 1 min
             const scorePct = Math.round((s.sessionScore || 0) * 100);
             
             html += `
@@ -315,6 +323,8 @@ async function loadDashboardData(uid) {
 
     } catch (error) {
         console.error("Error loading data:", error);
+        // Error handling if Firestore rules block the user
+        document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center; color:#be3f3f;'>Error: Database permission denied. Check Firestore rules.</td></tr>";
     }
 }
 
@@ -358,21 +368,23 @@ window.toggleSession = async function() {
                 const endTime = new Date();
                 const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
                 
-                // Only save if session was longer than 10 seconds (prevents accidental clicks filling up DB)
-                if (durationSeconds > 10) {
+                // FIXED: Removed the 10-second limit. It will save the session even if you test it for 1 second!
+                try {
                     await firestore.collection('sessions').add({
                         userId: currentUser.uid,
                         username: currentUser.displayName || "User",
                         startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
                         endTime: firebase.firestore.Timestamp.fromDate(endTime),
                         duration: durationSeconds,
-                        sitDuration: durationSeconds, // simplified
-                        sessionScore: latestLiveScore / 100, // Converts 85 to 0.85
+                        sitDuration: durationSeconds,
+                        sessionScore: latestLiveScore / 100,
                         createdAt: firebase.firestore.Timestamp.fromDate(endTime)
                     });
                     
-                    // Reload the numbers so the new session shows up!
-                    loadDashboardData(currentUser.uid);
+                    loadDashboardData(currentUser.uid); // Refresh table immediately
+                } catch (saveError) {
+                    alert("Failed to save session to history! Check your Firestore Rules.");
+                    console.error(saveError);
                 }
             }
         }
@@ -381,19 +393,18 @@ window.toggleSession = async function() {
     }
 };
 
-
+// 4. LIVE SENSOR UPDATES
 db.ref('live_data').on('value', (snapshot) => {
     let data = snapshot.val();
     
+    // Default to 100 if empty so it doesn't break math
     if (!data || data.score === undefined) {
         data = { score: 100 }; 
     }
     
-    if (typeof latestLiveScore !== 'undefined') {
-        latestLiveScore = data.score; 
-    }
+    latestLiveScore = data.score; 
     
-
+    // Visually Clamp between 2% and 98% to prevent edge bleeding
     let safePosition = Math.max(2, Math.min(98, data.score));
     
     document.getElementById('uiScoreValue').innerText = data.score + "%";
