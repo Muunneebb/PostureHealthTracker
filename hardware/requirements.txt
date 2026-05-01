@@ -1,0 +1,6 @@
+requests
+picamera2
+mediapipe
+numpy
+opencv-python
+firebase-admin
