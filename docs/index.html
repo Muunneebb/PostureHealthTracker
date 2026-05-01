@@ -352,28 +352,30 @@ db.ref('system_state/camera_command').on('value', (snapshot) => {
 });
 
 window.toggleSession = async function() {
+    console.log("[toggleSession] fired. isSessionActive:", isSessionActive, "| currentUser:", currentUser?.uid, "| currentSessionStartTime:", currentSessionStartTime);
     try {
         if (!isSessionActive) {
-            // STARTING
             currentSessionStartTime = new Date();
             localStorage.setItem('sessionStartTime', currentSessionStartTime.toISOString());
+            console.log("[toggleSession] STARTING session at", currentSessionStartTime.toISOString());
             await db.ref('system_state').update({ camera_command: "ON" });
         } else {
-            // STOPPING & SAVING
+            console.log("[toggleSession] STOPPING session.");
             await db.ref('system_state').update({ camera_command: "OFF" });
 
-            // Recover start time from localStorage if page was refreshed mid-session
             if (!currentSessionStartTime) {
                 const stored = localStorage.getItem('sessionStartTime');
+                console.log("[toggleSession] startTime not in memory, localStorage value:", stored);
                 if (stored) currentSessionStartTime = new Date(stored);
             }
 
             if (currentSessionStartTime && currentUser) {
                 const endTime = new Date();
                 const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
+                console.log("[toggleSession] Saving to Firestore. Duration:", durationSeconds, "s | Score:", latestLiveScore);
 
                 try {
-                    await firestore.collection('sessions').add({
+                    const docRef = await firestore.collection('sessions').add({
                         userId: currentUser.uid,
                         username: currentUser.displayName || "User",
                         startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
@@ -383,20 +385,22 @@ window.toggleSession = async function() {
                         sessionScore: latestLiveScore / 100,
                         createdAt: firebase.firestore.Timestamp.fromDate(endTime)
                     });
-
+                    console.log("[toggleSession] Session saved! Doc ID:", docRef.id);
                     localStorage.removeItem('sessionStartTime');
                     currentSessionStartTime = null;
                 } catch (saveError) {
-                    alert("Failed to save session to history! Check your Firestore Rules.");
-                    console.error(saveError);
+                    console.error("[toggleSession] Firestore save FAILED:", saveError);
+                    alert("Save failed: " + saveError.message);
                 }
             } else {
+                console.warn("[toggleSession] Skipped save. currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser);
                 localStorage.removeItem('sessionStartTime');
                 currentSessionStartTime = null;
             }
         }
-    } catch (error) { 
-        alert("Database connection failed. Check internet."); 
+    } catch (error) {
+        console.error("[toggleSession] Outer error:", error);
+        alert("Database connection failed: " + error.message);
     }
 };
 
