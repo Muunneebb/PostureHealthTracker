@@ -18,7 +18,7 @@ else:
 # FIREBASE CLOUD LINK
 # ==========================================
 # This connects your Pi directly to the website without Flask
-FIREBASE_URL = "https://posturehealthtracker-default-rtdb.firebaseio.com"
+FIREBASE_URL = "https://posturehealthtracker-default-rtdb.europe-west1.firebasedatabase.app"
 HAILO_STATUS_FILE = "/tmp/posturehealthtracker_hailo.json"
 HAILO_LOG_FILE = "/tmp/posturehealthtracker_hailo.log"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
