@@ -74,6 +74,32 @@ body {
 .panel-title { margin: 0; color: #24426f; font-size: 1.45rem; font-weight: 600; }
 .panel-body { padding: 1rem 1.25rem; }
 
+.camera-panel { display: grid; grid-template-columns: 260px 1fr; gap: 1rem; align-items: start; }
+.camera-frame {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+    border: 1px solid #cad3e5;
+    background: linear-gradient(135deg, #dfe8f7 0%, #f5f8fd 100%);
+    object-fit: cover;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
+}
+.camera-meta { display: grid; gap: 0.5rem; }
+.camera-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: fit-content;
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    background: #e8f6ec;
+    color: #2f8f46;
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+.camera-steps { margin: 0; padding-left: 1.1rem; color: #3f5272; line-height: 1.55; }
+.camera-steps li { margin-bottom: 0.35rem; }
+
 .status-row { display: flex; align-items: center; gap: 0.7rem; color: #314b75; font-size: 1.3rem; font-weight: 600; margin-bottom: 0.25rem; }
 .status-dot { width: 14px; height: 14px; border-radius: 999px; background: #a5afc4; display: inline-block; }
 .status-dot.active { background: #42b86f; box-shadow: 0 0 0 4px rgba(66, 184, 111, 0.22); }
@@ -170,6 +196,23 @@ body {
         </div>
     </section>
 
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Live Camera View</h3>
+        </div>
+        <div class="panel-body camera-panel">
+            <img id="uiCameraFrame" class="camera-frame" alt="Live camera preview" />
+            <div class="camera-meta">
+                <div class="camera-chip" id="uiCameraChip">Camera idle</div>
+                <p class="status-subtext" id="uiCameraStatus" style="margin: 0;">Start monitoring to activate the Hailo camera feed.</p>
+                <ul class="camera-steps" id="uiCameraMetrics">
+                    <li>Session score will appear here.</li>
+                    <li>Pose metrics will update live during the session.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
     <!-- SCORE PROGRESS BAR -->
     <section class="panel">
         <div class="panel-head">
@@ -185,7 +228,7 @@ body {
                 <div id="uiScoreValue" class="score-value">100%</div>
             </div>
             <p id="uiScoreStatus" class="score-status">
-                Status: Ready (Hardware disconnected)
+                Status: Ready (Camera disconnected)
             </p>
         </div>
     </section>
@@ -245,6 +288,57 @@ let currentUser = null;
 let currentSessionStartTime = localStorage.getItem('sessionStartTime') ? new Date(localStorage.getItem('sessionStartTime')) : null;
 let currentSessionId = localStorage.getItem('activeSessionId') || null;
 let latestLiveScore = 100;
+
+const cameraPlaceholder = 'data:image/svg+xml;base64,' + btoa(`
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+    <defs>
+        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#dfe8f7"/>
+            <stop offset="100%" stop-color="#f5f8fd"/>
+        </linearGradient>
+    </defs>
+    <rect width="640" height="480" rx="32" fill="url(#g)"/>
+    <rect x="90" y="80" width="460" height="300" rx="28" fill="#ffffff" stroke="#cad3e5" stroke-width="4"/>
+    <circle cx="320" cy="230" r="58" fill="#48a2f3" opacity="0.15"/>
+    <text x="320" y="210" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#24426f" font-weight="700">Camera Preview</text>
+    <text x="320" y="250" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#5a6d8e">Start monitoring to begin tracking</text>
+</svg>`);
+
+function updateCameraPanel(data) {
+        const frame = document.getElementById('uiCameraFrame');
+        const chip = document.getElementById('uiCameraChip');
+        const status = document.getElementById('uiCameraStatus');
+        const metrics = document.getElementById('uiCameraMetrics');
+
+        if (data && data.cameraFrame) {
+                frame.src = data.cameraFrame;
+        } else {
+                frame.src = cameraPlaceholder;
+        }
+
+        const cameraActive = Boolean(data && data.cameraActive);
+        chip.textContent = cameraActive ? 'Camera active' : 'Camera idle';
+        chip.style.background = cameraActive ? '#e8f6ec' : '#eef2f7';
+        chip.style.color = cameraActive ? '#2f8f46' : '#5a6d8e';
+
+        if (!data || !cameraActive) {
+                status.textContent = 'Start monitoring to activate the Hailo camera feed.';
+                metrics.innerHTML = '<li>Session score will appear here.</li><li>Pose metrics will update live during the session.</li>';
+                return;
+        }
+
+        const frameScore = Number.isFinite(data.frameScore) ? data.frameScore : data.score;
+        const sessionScore = Number.isFinite(data.sessionScore) ? data.sessionScore : data.score;
+        const cameraMetrics = data.cameraMetrics || {};
+
+        status.textContent = `Live frame score ${frameScore}% and session score ${sessionScore}%`;
+        metrics.innerHTML = `
+                <li>Frame score: ${frameScore}%</li>
+                <li>Session score: ${sessionScore}%</li>
+                <li>Shoulder alignment: ${cameraMetrics.shoulder_alignment ?? 'n/a'}</li>
+                <li>Neck angle: ${cameraMetrics.neck_angle ?? 'n/a'}</li>
+        `;
+}
 
 // 1. AUTHENTICATION & DATA LOADING
 auth.onAuthStateChanged(user => {
@@ -445,7 +539,8 @@ db.ref('live_data').on('value', (snapshot) => {
         data = { score: 100 }; 
     }
     
-    latestLiveScore = data.score; 
+    latestLiveScore = data.score;
+    updateCameraPanel(data);
     
     // Visually Clamp between 2% and 98% to prevent edge bleeding
     let safePosition = Math.max(2, Math.min(98, data.score));
@@ -455,11 +550,11 @@ db.ref('live_data').on('value', (snapshot) => {
     
     const statusEl = document.getElementById('uiScoreStatus');
     if (isSessionActive) {
-        if (data.score >= 80) { statusEl.innerText = "Status: Excellent Alignment"; statusEl.className = "score-status"; }
-        else if (data.score >= 60) { statusEl.innerText = "Status: Acceptable Alignment"; statusEl.className = "score-status"; }
-        else { statusEl.innerText = "Status: Correction Needed"; statusEl.className = "score-status alert"; }
+        if (data.score >= 80) { statusEl.innerText = `Status: Excellent Alignment | Frame ${data.frameScore ?? data.score}%`; statusEl.className = "score-status"; }
+        else if (data.score >= 60) { statusEl.innerText = `Status: Acceptable Alignment | Frame ${data.frameScore ?? data.score}%`; statusEl.className = "score-status"; }
+        else { statusEl.innerText = `Status: Correction Needed | Frame ${data.frameScore ?? data.score}%`; statusEl.className = "score-status alert"; }
     } else {
-        statusEl.innerText = "Status: Ready (Hardware disconnected)";
+        statusEl.innerText = "Status: Ready (Camera disconnected)";
         statusEl.className = "score-status";
     }
 });
