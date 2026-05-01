@@ -5,63 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - PostureHealthTracker</title>
 
-    <!-- FIREBASE LIBRARIES -->
+    <!-- FIREBASE LIBRARIES (Added Firestore for History) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
 <style>
 /* ==========================================
-   GLOBAL APP SHELL (The part we were missing)
+   GLOBAL APP SHELL
    ========================================== */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #f0f4fb; /* Soft background so white cards pop */
+    background-color: #f0f4fb; 
     margin: 0;
     padding: 0;
-    color: #24426f;
 }
 
 /* THE NAVIGATION BAR */
 .navbar {
     background-color: #1a2942;
     color: white;
-    padding: 1rem 2rem;
+    padding: 1rem 0;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.nav-container {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    margin-bottom: 2rem;
 }
 
-.nav-brand {
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
+.nav-brand { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.5px; }
 .nav-brand span { color: #48a2f3; }
-
-.nav-links {
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-}
-
-.nav-link {
-    color: #a5afc4;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.95rem;
-    transition: color 0.2s;
-}
-
-.nav-link:hover, .nav-link.active {
-    color: white;
-}
+.nav-links { display: flex; gap: 1.5rem; align-items: center; }
+.nav-link { color: #a5afc4; text-decoration: none; font-weight: 600; font-size: 0.95rem; }
+.nav-link.active { color: white; }
 
 .nav-btn-logout {
     background: transparent;
@@ -71,220 +54,71 @@ body {
     border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
-    transition: all 0.2s;
 }
-
-.nav-btn-logout:hover {
-    background: #be3f3f;
-    border-color: #be3f3f;
-    color: white;
-}
+.nav-btn-logout:hover { background: #be3f3f; border-color: #be3f3f; color: white; }
 
 /* ==========================================
-   DASHBOARD CSS (Your existing styling)
+   YOUR ORIGINAL DASHBOARD CSS
    ========================================== */
-.medical-dashboard {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 0 20px 40px 20px;
-}
+.medical-dashboard { max-width: 1120px; margin: 0 auto; padding: 0 20px 40px 20px; }
 
-.summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 1.5rem;
-}
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+.summary-card { background: #f4f6fb; border: 1px solid #dbe2ef; border-radius: 12px; padding: 1rem 1.25rem; box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08); position: relative; }
+.summary-card::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; border-radius: 0 0 12px 12px; background: linear-gradient(90deg, #70b87f 0%, #48a2f3 100%); }
+.summary-label { color: #37517d; font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; margin-top: 0; }
+.summary-value { color: #1f3f72; font-size: 2.4rem; line-height: 1; font-weight: 700; margin: 0; }
+.summary-value.compact { font-size: 2.1rem; }
 
-.summary-card {
-    background: #ffffff;
-    border: 1px solid #dbe2ef;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(19, 38, 74, 0.05);
-    position: relative;
-}
+.panel { background: #f8f9fd; border: 1px solid #dbe2ef; border-radius: 10px; box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08); margin-bottom: 1rem; }
+.panel-head { padding: 0.9rem 1.25rem; border-bottom: 1px solid #d6dcea; }
+.panel-title { margin: 0; color: #24426f; font-size: 1.45rem; font-weight: 600; }
+.panel-body { padding: 1rem 1.25rem; }
 
-.summary-card::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 4px;
-    border-radius: 0 0 12px 12px;
-    background: linear-gradient(90deg, #70b87f 0%, #48a2f3 100%);
-}
-
-.summary-label {
-    color: #5a6d8e;
-    font-size: 0.95rem;
-    font-weight: 600;
-    margin: 0 0 0.5rem 0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.summary-value {
-    color: #1a2942;
-    font-size: 2.2rem;
-    line-height: 1;
-    font-weight: 700;
-    margin: 0;
-}
-
-.panel {
-    background: #ffffff;
-    border: 1px solid #dbe2ef;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(19, 38, 74, 0.05);
-    margin-bottom: 1.5rem;
-    overflow: hidden;
-}
-
-.panel-head {
-    background: #f8f9fd;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e5e9f2;
-}
-
-.panel-title {
-    margin: 0;
-    color: #1a2942;
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-.panel-body {
-    padding: 1.5rem;
-}
-
-.status-row {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    color: #1a2942;
-    font-size: 1.2rem;
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-}
-
-.status-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #a5afc4;
-    display: inline-block;
-}
-
-.status-dot.active {
-    background: #42b86f;
-    box-shadow: 0 0 0 4px rgba(66, 184, 111, 0.22);
-}
-
-.status-subtext {
-    color: #5a6d8e;
-    font-size: 0.95rem;
-    margin: 0 0 1.5rem;
-}
+.status-row { display: flex; align-items: center; gap: 0.7rem; color: #314b75; font-size: 1.3rem; font-weight: 600; margin-bottom: 0.25rem; }
+.status-dot { width: 14px; height: 14px; border-radius: 999px; background: #a5afc4; display: inline-block; }
+.status-dot.active { background: #42b86f; box-shadow: 0 0 0 4px rgba(66, 184, 111, 0.22); }
+.status-subtext { color: #667898; font-size: 0.98rem; margin: 0 0 1rem; }
 
 .monitor-action { display: flex; justify-content: center; }
+.monitor-btn { min-width: 260px; border-radius: 8px; font-size: 1.05rem; font-weight: 600; padding: 10px 20px; cursor: pointer; border: none; color: white; }
+.btn-primary { background-color: #48a2f3; }
+.btn-stop { background-color: #be3f3f; }
 
-.monitor-btn {
-    min-width: 250px;
-    border-radius: 8px;
-    font-size: 1.05rem;
-    font-weight: 600;
-    padding: 12px 24px;
-    cursor: pointer;
-    border: none;
-    color: white;
-    transition: transform 0.1s, box-shadow 0.2s;
-}
+.score-wrap { display: grid; grid-template-columns: 1fr auto; gap: 0.8rem; align-items: center; }
+.score-track { position: relative; height: 22px; border-radius: 999px; overflow: hidden; border: 1px solid #cad3e5; background: linear-gradient(90deg, #76c68a 0%, #a8cf44 24%, #e5af3e 48%, #df6e48 72%, #cad1dd 100%); }
+.score-marker { position: absolute; top: -5px; width: 3px; height: 32px; background: #24395f; transition: left 0.5s ease; }
+.score-value { color: #1f3f72; font-size: 2rem; font-weight: 700; margin: 0; }
+.score-status { margin-top: 0.9rem; color: #4a5d7f; font-size: 1rem; font-weight: 600; margin-bottom: 0; }
+.score-status.alert { color: #996515; }
 
-.monitor-btn:active { transform: scale(0.98); }
-.btn-primary { background-color: #48a2f3; box-shadow: 0 4px 12px rgba(72, 162, 243, 0.3); }
-.btn-primary:hover { background-color: #368be0; }
-.btn-stop { background-color: #be3f3f; box-shadow: 0 4px 12px rgba(190, 63, 63, 0.3); }
-
-.score-wrap {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 1.5rem;
-    align-items: center;
-}
-
-.score-track {
-    position: relative;
-    height: 24px;
-    border-radius: 12px;
-    border: 1px solid #dce2ef;
-    background: linear-gradient(90deg, #be3f3f 0%, #e5af3e 40%, #a8cf44 70%, #42b86f 100%);
-}
-
-.score-marker {
-    position: absolute;
-    top: -6px;
-    width: 4px;
-    height: 36px;
-    background: #1a2942;
-    border-radius: 2px;
-    transition: left 0.5s ease;
-}
-
-.score-value {
-    color: #1a2942;
-    font-size: 2rem;
-    font-weight: 700;
-    min-width: 80px;
-    text-align: right;
-}
-
-.score-status { margin-top: 1rem; color: #5a6d8e; font-size: 1rem; font-weight: 600; margin-bottom: 0; }
-.score-status.alert { color: #be3f3f; }
-
-.layout-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 1.5rem;
-    align-items: start;
-}
-
+.layout-grid { display: grid; grid-template-columns: 1fr 300px; gap: 0.95rem; align-items: start; }
 .history-table { width: 100%; border-collapse: collapse; }
-.history-table th { color: #5a6d8e; font-size: 0.9rem; text-transform: uppercase; text-align: left; border-bottom: 2px solid #e5e9f2; padding: 1rem; }
-.history-table td { color: #1a2942; font-size: 0.95rem; border-bottom: 1px solid #e5e9f2; padding: 1rem; font-weight: 500; }
-.history-table tbody tr { transition: background 0.2s; cursor: pointer; }
-.history-table tbody tr:hover { background: #f8f9fd; }
+.history-table th { color: #3a527d; font-size: 0.95rem; font-weight: 700; text-align: left; border-bottom: 1px solid #d8deea; padding: 0.65rem 0.4rem; }
+.history-table td { color: #3f5272; font-size: 0.95rem; border-bottom: 1px solid #e5e9f2; padding: 0.65rem 0.4rem; }
+.history-table tbody tr { cursor: pointer; }
+.history-table tbody tr:hover { background: #f0f4fb; }
 
-.insight-box {
-    background: #ffffff;
-    border: 1px solid #dbe2ef;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(19, 38, 74, 0.05);
-    padding: 1.5rem;
-}
+.insight-box { background: #f2f4fb; border: 1px solid #d8dff0; border-radius: 10px; box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08); padding: 1rem; }
+.insight-title { color: #365688; font-size: 1.4rem; font-weight: 700; margin: 0 0 0.8rem; }
+.insight-text { color: #2f4f7c; font-size: 1.1rem; line-height: 1.45; margin: 0 0 0.8rem; }
+.tip { border-top: 1px solid #d6dded; padding-top: 0.8rem; color: #5a6d8e; font-size: 0.95rem; line-height: 1.5; margin: 0; }
 
-.insight-title { color: #1a2942; font-size: 1.25rem; font-weight: 700; margin: 0 0 1rem; }
-.insight-text { color: #37517d; font-size: 1rem; line-height: 1.5; margin: 0 0 1rem; }
-.tip { border-top: 1px solid #e5e9f2; padding-top: 1rem; color: #5a6d8e; font-size: 0.95rem; line-height: 1.5; }
-
-.advanced-wrap { margin-top: 1.5rem; }
-.advanced-toggle { list-style: none; cursor: pointer; color: #1a2942; font-weight: 700; font-size: 1rem; padding: 1rem 1.5rem; border: 1px solid #dce2ef; border-radius: 12px; background: #ffffff; box-shadow: 0 2px 8px rgba(19, 38, 74, 0.03); }
+.advanced-wrap { margin-top: 1rem; }
+.advanced-toggle { list-style: none; cursor: pointer; color: #355781; font-weight: 700; font-size: 0.95rem; padding: 0.85rem 1rem; border: 1px solid #d6ddeb; border-radius: 8px; background: #f3f6fb; }
 .advanced-toggle::-webkit-details-marker { display: none; }
 </style>
 </head>
 <body>
 
-<!-- THE NEW NAVIGATION SHELL -->
+<!-- THE NAVIGATION SHELL -->
 <nav class="navbar">
-    <div class="nav-brand">
-        Posture<span>Tracker</span>
-    </div>
-    <div class="nav-links">
-        <a href="index.html" class="nav-link active">Dashboard</a>
-        <!-- We will hide the user email until loaded -->
-        <span id="userEmailDisplay" class="nav-link" style="color: white; font-weight: 400;">Loading...</span>
-        <button onclick="handleLogout()" class="nav-btn-logout">Sign Out</button>
+    <div class="nav-container">
+        <div class="nav-brand">Posture<span>Tracker</span></div>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link active">Dashboard</a>
+            <span id="userEmailDisplay" class="nav-link" style="color: white; font-weight: 400;">Loading...</span>
+            <button onclick="handleLogout()" class="nav-btn-logout">Sign Out</button>
+        </div>
     </div>
 </nav>
 
@@ -302,7 +136,7 @@ body {
         </article>
         <article class="summary-card">
             <p class="summary-label">Total Sitting Time</p>
-            <p class="summary-value" id="valTotalTime">--h --m</p>
+            <p class="summary-value compact" id="valTotalTime">--h --m</p>
         </article>
     </section>
 
@@ -317,7 +151,7 @@ body {
                 <span id="uiStatusText">Status: Not Active</span>
             </div>
             <p class="status-subtext" id="uiStatusSubtext">
-                No monitoring session running. Connect your AI Hat to begin.
+                No monitoring session running.
             </p>
             <div class="monitor-action">
                 <button id="mainActionButton" class="btn btn-primary monitor-btn" onclick="toggleSession()">Start Monitoring</button>
@@ -328,7 +162,7 @@ body {
     <!-- SCORE PROGRESS BAR -->
     <section class="panel">
         <div class="panel-head">
-            <h3 class="panel-title">Live Posture Health</h3>
+            <h3 class="panel-title">Posture Health Score</h3>
         </div>
         <div class="panel-body">
             <div class="score-wrap">
@@ -338,28 +172,28 @@ body {
                 <div id="uiScoreValue" class="score-value">--%</div>
             </div>
             <p id="uiScoreStatus" class="score-status">
-                Status: Waiting for sensor data...
+                Status: Waiting for data...
             </p>
         </div>
     </section>
 
     <!-- HISTORY & INSIGHTS -->
     <section class="layout-grid">
-        <article class="panel" style="margin-bottom: 0;">
+        <article class="panel">
             <div class="panel-head">
-                <h3 class="panel-title">Recent Sessions</h3>
+                <h3 class="panel-title">Session History</h3>
             </div>
-            <div class="panel-body" style="padding: 0;">
+            <div class="panel-body">
                 <table class="history-table">
                     <thead>
                         <tr>
                             <th>Date</th>
                             <th>Duration</th>
-                            <th>Score</th>
+                            <th>Posture Score</th>
                         </tr>
                     </thead>
                     <tbody id="historyTableBody">
-                        <tr><td colspan="3" style="text-align: center; color: #5a6d8e;">Waiting for database connection...</td></tr>
+                        <tr><td colspan="3" style="text-align: center; padding: 2rem;">Loading data...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -367,32 +201,17 @@ body {
 
         <aside class="insight-box">
             <h3 class="insight-title">Posture Insight</h3>
-            <p class="insight-text" id="uiInsightText">Connecting to database to generate insights...</p>
+            <p class="insight-text" id="uiInsightText">Analyzing your recent sessions...</p>
             <div class="tip" id="uiInsightTip">
                 <strong>Tip:</strong> Keep shoulders relaxed, feet flat, and place your screen at eye level.
             </div>
         </aside>
     </section>
 
-    <!-- ADVANCED LIVE MONITORING (Condensed for cleanliness) -->
-    <div class="advanced-wrap">
-        <details>
-            <summary class="advanced-toggle">Show Advanced Sensor Data</summary>
-            <div class="panel" style="margin-top: 1rem; box-shadow: none;">
-                <div class="panel-body">
-                    <p style="color: #5a6d8e; margin: 0;"><em>Raw sensor data (Pitch, Roll, Stress) will stream here when active.</em></p>
-                </div>
-            </div>
-        </details>
-    </div>
-
 </div>
 
 <!-- SERVERLESS JAVASCRIPT LOGIC -->
 <script>
-// ==========================================
-// FIREBASE CONFIGURATION
-// ==========================================
 const firebaseConfig = {
     apiKey: "AIzaSyDhVpz_D9OTfckaLA792N0c-bqmGnBd7G4",
     authDomain: "posturehealthtracker.firebaseapp.com",
@@ -403,33 +222,104 @@ const firebaseConfig = {
     measurementId: "G-5YG2GL2W9Z"
 };
 
-// Initialize Firebase
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
-const db = firebase.database();
+if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+const db = firebase.database();       // For live hardware tracking
+const firestore = firebase.firestore(); // For saving session history
 const auth = firebase.auth();
 
-// Require Login & Show Email in Navbar
+let currentUser = null;
+let currentSessionStartTime = null;
+let latestLiveScore = 100; // Tracks the most recent score for saving
+
+// 1. AUTHENTICATION & DATA LOADING
 auth.onAuthStateChanged(user => {
-    if (!user) {
-        window.location.href = 'login.html';
-    } else {
-        document.getElementById('userEmailDisplay').innerText = user.email;
+    if (!user) { 
+        window.location.href = 'login.html'; 
+    } else { 
+        currentUser = user;
+        document.getElementById('userEmailDisplay').innerText = user.email; 
+        loadDashboardData(user.uid);
     }
 });
 
 function handleLogout() {
-    auth.signOut().then(() => {
-        window.location.href = 'login.html';
-    });
+    auth.signOut().then(() => { window.location.href = 'login.html'; });
 }
 
-// ==========================================
-// SESSION LOGIC
-// ==========================================
-let isSessionActive = false;
+// 2. FETCH HISTORICAL DATA (Fills in the -- numbers)
+async function loadDashboardData(uid) {
+    try {
+        const snapshot = await firestore.collection('sessions')
+            .where('userId', '==', uid)
+            .get();
 
+        if (snapshot.empty) {
+            document.getElementById('valTotalSessions').innerText = "0";
+            document.getElementById('valAvgScore').innerText = "0%";
+            document.getElementById('valTotalTime').innerText = "0h 0m";
+            document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center;'>No sessions yet. Click start!</td></tr>";
+            document.getElementById('uiInsightText').innerText = "Start your first session to generate insights.";
+            return;
+        }
+
+        let totalScore = 0;
+        let totalDuration = 0;
+        let sessions = [];
+
+        // Collect all data
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            sessions.push({ id: doc.id, ...data });
+            totalScore += (data.sessionScore || 0);
+            totalDuration += (data.duration || 0);
+        });
+
+        // Sort by Date (Newest first)
+        sessions.sort((a, b) => b.startTime.toDate() - a.startTime.toDate());
+
+        // Update Top Cards
+        const avgScore = Math.round((totalScore / sessions.length) * 100);
+        const hours = Math.floor(totalDuration / 3600);
+        const mins = Math.floor((totalDuration % 3600) / 60);
+
+        document.getElementById('valTotalSessions').innerText = sessions.length;
+        document.getElementById('valAvgScore').innerText = avgScore + "%";
+        document.getElementById('valTotalTime').innerText = `${hours}h ${mins}m`;
+
+        // Update Insight Text
+        if (sessions.length >= 2) {
+            const lastScore = Math.round((sessions[0].sessionScore || 0) * 100);
+            const prevScore = Math.round((sessions[1].sessionScore || 0) * 100);
+            const diff = lastScore - prevScore;
+            if (diff > 0) document.getElementById('uiInsightText').innerText = `Your score improved by ${diff}% in your last session!`;
+            else if (diff < 0) document.getElementById('uiInsightText').innerText = `Your score dropped by ${Math.abs(diff)}% last time. Keep your core tight today.`;
+            else document.getElementById('uiInsightText').innerText = `Your posture score was stable in your last session.`;
+        }
+
+        // Fill Table (Top 6)
+        let html = "";
+        for (let i = 0; i < Math.min(6, sessions.length); i++) {
+            const s = sessions[i];
+            const dateStr = s.startTime.toDate().toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+            const durMin = Math.round((s.duration || 0) / 60);
+            const scorePct = Math.round((s.sessionScore || 0) * 100);
+            
+            html += `
+            <tr onclick="window.location='session_detail.html?id=${s.id}'">
+                <td>${dateStr}</td>
+                <td>${durMin} min</td>
+                <td style="color: ${scorePct >= 70 ? '#2f8f46' : (scorePct >= 50 ? '#996515' : '#be3f3f')}; font-weight:700;">${scorePct}%</td>
+            </tr>`;
+        }
+        document.getElementById('historyTableBody').innerHTML = html;
+
+    } catch (error) {
+        console.error("Error loading data:", error);
+    }
+}
+
+// 3. START/STOP SESSION LOGIC
+let isSessionActive = false;
 db.ref('system_state/camera_command').on('value', (snapshot) => {
     const status = snapshot.val();
     const btn = document.getElementById('mainActionButton');
@@ -439,48 +329,84 @@ db.ref('system_state/camera_command').on('value', (snapshot) => {
 
     if (status === "ON") {
         isSessionActive = true;
-        btn.innerText = "End Monitoring Session";
+        btn.innerText = "End Monitoring";
         btn.className = "btn btn-stop monitor-btn";
         dot.classList.add("active");
-        text.innerText = "Status: Live Tracking Active";
-        subtext.innerText = "Hardware is connected and streaming data.";
+        text.innerText = "Status: Active";
+        subtext.innerText = "Monitoring session running.";
     } else {
         isSessionActive = false;
-        btn.innerText = "Start Monitoring Session";
+        btn.innerText = "Start Monitoring";
         btn.className = "btn btn-primary monitor-btn";
         dot.classList.remove("active");
         text.innerText = "Status: Not Active";
-        subtext.innerText = "No monitoring session running. Click Start to begin.";
-        
-        // Reset Score bar when off
-        document.getElementById('uiScoreValue').innerText = "--%";
-        document.getElementById('uiScoreMarker').style.left = "0%";
+        subtext.innerText = "No monitoring session running.";
     }
 });
 
 window.toggleSession = async function() {
     try {
         if (!isSessionActive) {
+            // STARTING
+            currentSessionStartTime = new Date();
             await db.ref('system_state').update({ camera_command: "ON" });
         } else {
+            // STOPPING & SAVING
             await db.ref('system_state').update({ camera_command: "OFF" });
+            
+            if (currentSessionStartTime && currentUser) {
+                const endTime = new Date();
+                const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
+                
+                // Only save if session was longer than 10 seconds (prevents accidental clicks filling up DB)
+                if (durationSeconds > 10) {
+                    await firestore.collection('sessions').add({
+                        userId: currentUser.uid,
+                        username: currentUser.displayName || "User",
+                        startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
+                        endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                        duration: durationSeconds,
+                        sitDuration: durationSeconds, // simplified
+                        sessionScore: latestLiveScore / 100, // Converts 85 to 0.85
+                        createdAt: firebase.firestore.Timestamp.fromDate(endTime)
+                    });
+                    
+                    // Reload the numbers so the new session shows up!
+                    loadDashboardData(currentUser.uid);
+                }
+            }
         }
-    } catch (error) {
-        alert("Database connection failed. Check internet.");
+    } catch (error) { 
+        alert("Database connection failed. Check internet."); 
     }
 };
 
-// LIVE SENSOR UPDATES
+
 db.ref('live_data').on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data && isSessionActive && data.score) {
-        document.getElementById('uiScoreValue').innerText = data.score + "%";
-        document.getElementById('uiScoreMarker').style.left = data.score + "%";
-        
-        const statusEl = document.getElementById('uiScoreStatus');
+    let data = snapshot.val();
+    
+    if (!data || data.score === undefined) {
+        data = { score: 100 }; 
+    }
+    
+    if (typeof latestLiveScore !== 'undefined') {
+        latestLiveScore = data.score; 
+    }
+    
+
+    let safePosition = Math.max(2, Math.min(98, data.score));
+    
+    document.getElementById('uiScoreValue').innerText = data.score + "%";
+    document.getElementById('uiScoreMarker').style.left = `calc(${safePosition}% - 3px)`; 
+    
+    const statusEl = document.getElementById('uiScoreStatus');
+    if (isSessionActive) {
         if (data.score >= 80) { statusEl.innerText = "Status: Excellent Alignment"; statusEl.className = "score-status"; }
         else if (data.score >= 60) { statusEl.innerText = "Status: Acceptable Alignment"; statusEl.className = "score-status"; }
         else { statusEl.innerText = "Status: Correction Needed"; statusEl.className = "score-status alert"; }
+    } else {
+        statusEl.innerText = "Status: Ready (Hardware disconnected)";
+        statusEl.className = "score-status";
     }
 });
 </script>
