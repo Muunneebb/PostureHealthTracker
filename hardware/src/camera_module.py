@@ -19,19 +19,33 @@ except Exception:
 class CameraModule:
     def __init__(self):
         self.available = False
-        if not HW:
-            return
+        self.picam2 = None
+
+    def start(self):
+        if not HW or self.available:
+            return self.available
         try:
             self.picam2 = Picamera2()
-            config = self.picam2.create_still_configuration()
-            self.picam2.configure(config)
+            camera_config = self.picam2.create_still_configuration()
+            self.picam2.configure(camera_config)
             self.picam2.start()
             self.available = True
         except Exception:
             self.available = False
+            self.picam2 = None
+        return self.available
+
+    def stop(self):
+        if not self.available or self.picam2 is None:
+            return
+        try:
+            self.picam2.stop()
+        except Exception:
+            pass
+        self.available = False
 
     def capture(self, path=config.CAMERA_CAPTURE_PATH):
-        if not self.available:
+        if not self.available and not self.start():
             return None
         img = self.picam2.capture_array()
         import cv2

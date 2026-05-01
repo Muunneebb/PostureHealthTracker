@@ -243,6 +243,7 @@ const auth = firebase.auth();
 
 let currentUser = null;
 let currentSessionStartTime = localStorage.getItem('sessionStartTime') ? new Date(localStorage.getItem('sessionStartTime')) : null;
+let currentSessionId = localStorage.getItem('activeSessionId') || null;
 let latestLiveScore = 100;
 
 // 1. AUTHENTICATION & DATA LOADING
@@ -358,8 +359,28 @@ window.toggleSession = async function() {
         if (!isSessionActive) {
             currentSessionStartTime = new Date();
             localStorage.setItem('sessionStartTime', currentSessionStartTime.toISOString());
+
+            const sessionDocRef = firestore.collection('sessions').doc();
+            currentSessionId = sessionDocRef.id;
+            localStorage.setItem('activeSessionId', currentSessionId);
+
+            await sessionDocRef.set({
+                userId: currentUser.uid,
+                username: currentUser.displayName || "User",
+                startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
+                status: 'active',
+                createdAt: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
+                sessionScore: latestLiveScore / 100,
+                duration: 0,
+                sitDuration: 0
+            });
+
             console.log("[toggleSession] STARTING session at", currentSessionStartTime.toISOString());
-            await db.ref('system_state').update({ camera_command: "ON" });
+            await db.ref('system_state').update({
+                camera_command: "ON",
+                activeSessionId: currentSessionId,
+                sessionStartedAt: currentSessionStartTime.toISOString()
+            });
         } else {
             console.log("[toggleSession] STOPPING session.");
 
@@ -375,21 +396,23 @@ window.toggleSession = async function() {
             if (currentSessionStartTime && currentUser) {
                 const endTime = new Date();
                 const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
-                console.log("[toggleSession] Saving to Firestore. Duration:", durationSeconds, "s | Score:", latestLiveScore);
+                console.log("[toggleSession] Updating Firestore. Duration:", durationSeconds, "s | Score:", latestLiveScore);
 
                 try {
-                    const docRef = await firestore.collection('sessions').add({
-                        userId: currentUser.uid,
-                        username: currentUser.displayName || "User",
-                        startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
-                        endTime: firebase.firestore.Timestamp.fromDate(endTime),
-                        duration: durationSeconds,
-                        sitDuration: durationSeconds,
-                        sessionScore: latestLiveScore / 100,
-                        createdAt: firebase.firestore.Timestamp.fromDate(endTime)
-                    });
-                    console.log("[toggleSession] Session saved! Doc ID:", docRef.id);
+                    if (currentSessionId) {
+                        await firestore.collection('sessions').doc(currentSessionId).update({
+                            endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                            duration: durationSeconds,
+                            sitDuration: durationSeconds,
+                            sessionScore: latestLiveScore / 100,
+                            status: 'completed',
+                            updatedAt: firebase.firestore.Timestamp.fromDate(endTime)
+                        });
+                        console.log("[toggleSession] Session updated! Doc ID:", currentSessionId);
+                    }
                     localStorage.removeItem('sessionStartTime');
+                    localStorage.removeItem('activeSessionId');
+                    currentSessionId = null;
                     currentSessionStartTime = null;
                 } catch (saveError) {
                     console.error("[toggleSession] Firestore save FAILED:", saveError);
@@ -398,11 +421,13 @@ window.toggleSession = async function() {
             } else {
                 console.warn("[toggleSession] Skipped save. currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser);
                 localStorage.removeItem('sessionStartTime');
+                localStorage.removeItem('activeSessionId');
+                currentSessionId = null;
                 currentSessionStartTime = null;
             }
 
             console.log("[toggleSession] Updating RTDB camera_command OFF...");
-            await db.ref('system_state').update({ camera_command: "OFF" });
+            await db.ref('system_state').update({ camera_command: "OFF", activeSessionId: null });
             console.log("[toggleSession] RTDB update done.");
         }
     } catch (error) {
