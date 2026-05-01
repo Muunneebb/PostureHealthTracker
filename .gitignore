@@ -1,5 +1,52 @@
+# =========================
+# Python
+# =========================
 __pycache__/
-*.log
-.env
-firebase-key.json
+*.py[cod]
+*$py.class
+
+# =========================
+# Virtual environments
+# =========================
 venv/
+env/
+.venv/
+.env/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Credentials / Secrets (IMPORTANT)
+# =========================
+firebase-key.json
+*.json
+*.env
+GOOGLE_APPLICATION_CREDENTIALS
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Build / distribution
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
+# IDE / Editors
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Git / merge leftovers (safety)
+# =========================
+*.orig
+*.rej
