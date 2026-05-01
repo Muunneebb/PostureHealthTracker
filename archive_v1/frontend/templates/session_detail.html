@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Session Details - PostureHealthTracker{% endblock %}
+
+{% block content %}
+<div class="session-detail">
+    <div class="session-header">
+        <h2>Session Details</h2>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+
+    <div class="session-overview">
+        <div class="overview-card">
+            <h3>Duration</h3>
+            <p class="value" id="detailDuration">{{ (session.duration / 60) | round(0) | int }} minutes</p>
+        </div>
+        <div class="overview-card">
+            <h3>Sitting Time</h3>
+            <p class="value" id="detailSittingDuration">{{ (session.sitting_duration / 60) | round(0) | int if session.sitting_duration else 0 }} minutes</p>
+        </div>
+        <div class="overview-card">
+            <h3>Sitting Percentage</h3>
+            <p class="value" id="detailSittingPercentage">{{ (session.sitting_percentage) | round(0) | int }}%</p>
+        </div>
+        <div class="overview-card">
+            <h3>Session Score</h3>
+            {% set score = session.session_score if session.session_score is not none else 1.0 %}
+            <p class="value {% if score >= 0.7 %}score-color-good{% elif score >= 0.4 %}score-color-medium{% else %}score-color-poor{% endif %}" id="detailSessionScore">
+                {{ (score * 100) | round(0) | int }}%
+            </p>
+        </div>
+        <div class="overview-card">
+            <h3>Posture Alerts</h3>
+            <p class="value" id="detailPostureAlertCount">{{ session.posture_alert_count or 0 }}</p>
+        </div>
+        <div class="overview-card">
+            <h3>Break Alerts</h3>
+            <p class="value" id="detailBreakAlertCount">{{ session.break_alert_count or 0 }}</p>
+        </div>
+        <div class="overview-card">
+            <h3>Breaks Taken</h3>
+            <p class="value" id="detailBreakCount">{{ session.break_count or 0 }}</p>
+        </div>
+        <div class="overview-card">
+            <h3>Last Break</h3>
+            <p class="value break-time" id="sessionLastBreak">
+                {{ session.last_break_time[:16].replace('T', ' ') if session.last_break_time else 'No break taken yet' }}
+            </p>
+        </div>
+        <div class="overview-card">
+            <h3>Next Break Due</h3>
+            <p class="value break-time" id="sessionNextBreak">
+                {{ session.next_break_time[:16].replace('T', ' ') if session.next_break_time else 'Not available' }}
+            </p>
+        </div>
+    </div>
+
+    <div class="alerts-section">
+        <h3>Alert Summary</h3>
+        <div class="alerts-list">
+            <div class="alert-item posture-alert-summary">
+                <span class="alert-icon">P</span>
+                <span class="alert-text">Posture Alerts: {{ session.posture_alert_count or 0 }} (corrections detected)</span>
+            </div>
+            <div class="alert-item break-alert-summary">
+                <span class="alert-icon">B</span>
+                <span class="alert-text">Break Alerts: {{ session.break_alert_count or 0 }} (reminders sent)</span>
+            </div>
+            {% if session.break_alert %}
+            <div class="alert-item break-alert">
+                <span class="alert-icon">!</span>
+                <span class="alert-text">Continuous sitting alert - Threshold exceeded</span>
+            </div>
+            {% endif %}
+            {% if session.excessive_buzzer_alert %}
+            <div class="alert-item buzzer-alert">
+                <span class="alert-icon">!</span>
+                <span class="alert-text">Frequent posture issues detected in this session</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="readings-section">
+        <h3>Sensor Readings (<span id="readingCountValue">{{ session.readings | length }}</span> readings)</h3>
+        <p class="live-sync-note" id="liveSyncStatus">
+            {% if session.end_time %}
+            Session has ended. Showing recorded history.
+            {% else %}
+            Live updates are active for this session.
+            {% endif %}
+        </p>
+        
+        <div class="charts-container">
+            <canvas id="stressChart"></canvas>
+            <canvas id="positionChart"></canvas>
+        </div>
+        
+        <table class="readings-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Pitch</th>
+                    <th>Roll</th>
+                    <th>Sitting</th>
+                    <th>Stress</th>
+                    <th>Buzzer</th>
+                </tr>
+            </thead>
+            <tbody id="readingsTableBody">
+                {% for reading in session.readings %}
+                <tr>
+                    <td>{{ reading.timestamp[11:19] }}</td>
+                    <td>{{ reading.pitch | round(1) if reading.pitch is not none else '-' }}°</td>
+                    <td>{{ reading.roll | round(1) if reading.roll is not none else '-' }}°</td>
+                    <td>{% if reading.is_seated %}<span class="badge-yes">Yes</span>{% else %}<span class="badge-no">No</span>{% endif %}</td>
+                    <td>{{ (reading.stress_score * 100) | round(0) | int if reading.stress_score is not none else '-' }}%</td>
+                    <td>{% if reading.buzzer_triggered %}<span class="badge-yes">Yes</span>{% else %}<span class="badge-no">No</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="sessionDataContainer" data-session='{{ session | tojson | safe }}'></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const container = document.getElementById('sessionDataContainer');
+const sessionData = JSON.parse(container.getAttribute('data-session'));
+const isActiveSession = !sessionData.end_time;
+let lastReadingId = (sessionData.readings || []).reduce((max, r) => Math.max(max, r.id || 0), 0);
+
+function formatIsoDateTime(val) {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d.toLocaleTimeString();
+}
+
+function renderReadingRow(r) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td>${formatIsoDateTime(r.timestamp)}</td>
+        <td>${r.pitch ? r.pitch.toFixed(1) + '°' : '-'}</td>
+        <td>${r.roll ? r.roll.toFixed(1) + '°' : '-'}</td>
+        <td>${r.is_seated ? '<span class="badge-yes">Yes</span>' : '<span class="badge-no">No</span>'}</td>
+        <td>${r.stress_score ? (r.stress_score * 100).toFixed(0) + '%' : '-'}</td>
+        <td>${r.buzzer_triggered ? '<span class="badge-yes">Yes</span>' : '<span class="badge-no">No</span>'}</td>
+    `;
+    return row;
+}
+
+// Charts Initialization
+const commonOptions = { responsive: true, tension: 0.4, scales: { y: { beginAtZero: true } } };
+
+const stressChart = new Chart(document.getElementById('stressChart'), {
+    type: 'line',
+    data: {
+        labels: sessionData.readings.map(r => new Date(r.timestamp).toLocaleTimeString()),
+        datasets: [{ label: 'Stress Score (%)', data: sessionData.readings.map(r => r.stress_score * 100), borderColor: '#FF9800', fill: true }]
+    },
+    options: commonOptions
+});
+
+const posChart = new Chart(document.getElementById('positionChart'), {
+    type: 'line',
+    data: {
+        labels: sessionData.readings.map(r => new Date(r.timestamp).toLocaleTimeString()),
+        datasets: [
+            { label: 'Pitch', data: sessionData.readings.map(r => r.pitch), borderColor: '#2196F3' },
+            { label: 'Roll', data: sessionData.readings.map(r => r.roll), borderColor: '#4CAF50' }
+        ]
+    },
+    options: commonOptions
+});
+
+async function poll() {
+    if (!isActiveSession) return;
+    try {
+        const res = await fetch(`/api/session/${sessionData.id}/readings?since_id=${lastReadingId}`);
+        const data = await res.json();
+        if (data.readings.length > 0) {
+            data.readings.forEach(r => {
+                const label = new Date(r.timestamp).toLocaleTimeString();
+                document.getElementById('readingsTableBody').appendChild(renderReadingRow(r));
+                stressChart.data.labels.push(label);
+                stressChart.data.datasets[0].data.push(r.stress_score * 100);
+                posChart.data.labels.push(label);
+                posChart.data.datasets[0].data.push(r.pitch);
+                posChart.data.datasets[1].data.push(r.roll);
+            });
+            stressChart.update();
+            posChart.update();
+            lastReadingId = data.last_id;
+            document.getElementById('readingCountValue').textContent = document.querySelectorAll('#readingsTableBody tr').length;
+        }
+    } catch (e) { console.error(e); }
+}
+
+if (isActiveSession) { setInterval(poll, 3000); }
+</script>
+{% endblock %}

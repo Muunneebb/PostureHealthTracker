@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - PostureHealthTracker</title>
+
+    <!-- FIREBASE LIBRARIES -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<style>
+/* ==========================================
+   GLOBAL APP SHELL
+   ========================================== */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f0f4fb; 
+    margin: 0;
+    padding: 0;
+}
+
+/* THE NAVIGATION BAR */
+.navbar {
+    background-color: #1a2942;
+    color: white;
+    padding: 1rem 0;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.nav-container {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-brand { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.5px; }
+.nav-brand span { color: #48a2f3; }
+.nav-links { display: flex; gap: 1.5rem; align-items: center; }
+.nav-link { color: #a5afc4; text-decoration: none; font-weight: 600; font-size: 0.95rem; }
+.nav-link.active { color: white; }
+
+.nav-btn-logout {
+    background: transparent;
+    border: 1px solid #a5afc4;
+    color: #a5afc4;
+    padding: 0.4rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+.nav-btn-logout:hover { background: #be3f3f; border-color: #be3f3f; color: white; }
+
+/* ==========================================
+   YOUR ORIGINAL DASHBOARD CSS
+   ========================================== */
+.medical-dashboard { max-width: 1120px; margin: 0 auto; padding: 0 20px 40px 20px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+.summary-card { background: #f4f6fb; border: 1px solid #dbe2ef; border-radius: 12px; padding: 1rem 1.25rem; box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08); position: relative; }
+.summary-card::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; border-radius: 0 0 12px 12px; background: linear-gradient(90deg, #70b87f 0%, #48a2f3 100%); }
+.summary-label { color: #37517d; font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; margin-top: 0; }
+.summary-value { color: #1f3f72; font-size: 2.4rem; line-height: 1; font-weight: 700; margin: 0; }
+.summary-value.compact { font-size: 2.1rem; }
+
+.panel { background: #f8f9fd; border: 1px solid #dbe2ef; border-radius: 10px; box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08); margin-bottom: 1rem; }
+.panel-head { padding: 0.9rem 1.25rem; border-bottom: 1px solid #d6dcea; }
+.panel-title { margin: 0; color: #24426f; font-size: 1.45rem; font-weight: 600; }
+.panel-body { padding: 1rem 1.25rem; }
+
+.camera-panel { display: grid; grid-template-columns: 260px 1fr; gap: 1rem; align-items: start; }
+.camera-frame {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+    border: 1px solid #cad3e5;
+    background: linear-gradient(135deg, #dfe8f7 0%, #f5f8fd 100%);
+    object-fit: cover;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
+}
+.camera-meta { display: grid; gap: 0.5rem; }
+.camera-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: fit-content;
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    background: #e8f6ec;
+    color: #2f8f46;
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+.camera-steps { margin: 0; padding-left: 1.1rem; color: #3f5272; line-height: 1.55; }
+.camera-steps li { margin-bottom: 0.35rem; }
+
+.status-row { display: flex; align-items: center; gap: 0.7rem; color: #314b75; font-size: 1.3rem; font-weight: 600; margin-bottom: 0.25rem; }
+.status-dot { width: 14px; height: 14px; border-radius: 999px; background: #a5afc4; display: inline-block; }
+.status-dot.active { background: #42b86f; box-shadow: 0 0 0 4px rgba(66, 184, 111, 0.22); }
+.status-subtext { color: #667898; font-size: 0.98rem; margin: 0 0 1rem; }
+
+.monitor-action { display: flex; justify-content: center; }
+.monitor-btn { min-width: 260px; border-radius: 8px; font-size: 1.05rem; font-weight: 600; padding: 10px 20px; cursor: pointer; border: none; color: white; }
+.btn-primary { background-color: #48a2f3; }
+.btn-stop { background-color: #be3f3f; }
+
+/* FIXED SCORE BAR CSS */
+.score-wrap { display: grid; grid-template-columns: 1fr auto; gap: 0.8rem; align-items: center; }
+.score-track { 
+    position: relative; 
+    height: 22px; 
+    border-radius: 999px; 
+    border: 1px solid #cad3e5; 
+    background: linear-gradient(90deg, #be3f3f 0%, #e5af3e 50%, #42b86f 100%); 
+}
+.score-marker { 
+    position: absolute; 
+    top: -5px; 
+    width: 6px; /* Thicker line */
+    height: 32px; 
+    background: #24395f; 
+    border-radius: 3px; 
+    transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1); /* Smooth sliding */
+}
+.score-value { color: #1f3f72; font-size: 2rem; font-weight: 700; margin: 0; min-width: 80px; text-align: right; }
+.score-status { margin-top: 0.9rem; color: #4a5d7f; font-size: 1rem; font-weight: 600; margin-bottom: 0; }
+.score-status.alert { color: #996515; }
+
+.layout-grid { display: grid; grid-template-columns: 1fr 300px; gap: 0.95rem; align-items: start; }
+.history-table { width: 100%; border-collapse: collapse; }
+.history-table th { color: #3a527d; font-size: 0.95rem; font-weight: 700; text-align: left; border-bottom: 1px solid #d8deea; padding: 0.65rem 0.4rem; }
+.history-table td { color: #3f5272; font-size: 0.95rem; border-bottom: 1px solid #e5e9f2; padding: 0.65rem 0.4rem; }
+.history-table tbody tr { cursor: pointer; }
+.history-table tbody tr:hover { background: #f0f4fb; }
+
+.insight-box { background: #f2f4fb; border: 1px solid #d8dff0; border-radius: 10px; box-shadow: 0 8px 18px rgba(19, 38, 74, 0.08); padding: 1rem; }
+.insight-title { color: #365688; font-size: 1.4rem; font-weight: 700; margin: 0 0 0.8rem; }
+.insight-text { color: #2f4f7c; font-size: 1.1rem; line-height: 1.45; margin: 0 0 0.8rem; }
+.tip { border-top: 1px solid #d6dded; padding-top: 0.8rem; color: #5a6d8e; font-size: 0.95rem; line-height: 1.5; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- THE NAVIGATION SHELL -->
+<nav class="navbar">
+    <div class="nav-container">
+        <div class="nav-brand">Posture<span>Tracker</span></div>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link active">Dashboard</a>
+            <span id="userEmailDisplay" class="nav-link" style="color: white; font-weight: 400;">Loading...</span>
+            <button onclick="handleLogout()" class="nav-btn-logout">Sign Out</button>
+        </div>
+    </div>
+</nav>
+
+<div class="medical-dashboard">
+    
+    <!-- TOP METRICS -->
+    <section class="summary-grid">
+        <article class="summary-card">
+            <p class="summary-label">Total Sessions</p>
+            <p class="summary-value" id="valTotalSessions">0</p>
+        </article>
+        <article class="summary-card">
+            <p class="summary-label">Avg Posture Score</p>
+            <p class="summary-value" id="valAvgScore">0%</p>
+        </article>
+        <article class="summary-card">
+            <p class="summary-label">Total Sitting Time</p>
+            <p class="summary-value compact" id="valTotalTime">0h 0m</p>
+        </article>
+    </section>
+
+    <!-- SESSION CONTROLS -->
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Current Monitoring Session</h3>
+        </div>
+        <div class="panel-body">
+            <div class="status-row">
+                <span id="uiStatusDot" class="status-dot"></span>
+                <span id="uiStatusText">Status: Not Active</span>
+            </div>
+            <p class="status-subtext" id="uiStatusSubtext">
+                No monitoring session running.
+            </p>
+            <div class="monitor-action">
+                <button id="mainActionButton" class="btn btn-primary monitor-btn" onclick="toggleSession()">Start Monitoring</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Live Camera View</h3>
+        </div>
+        <div class="panel-body camera-panel">
+            <img id="uiCameraFrame" class="camera-frame" alt="Live camera preview" />
+            <div class="camera-meta">
+                <div class="camera-chip" id="uiCameraChip">Camera idle</div>
+                <p class="status-subtext" id="uiCameraStatus" style="margin: 0;">Start monitoring to activate the Hailo camera feed.</p>
+                <ul class="camera-steps" id="uiCameraMetrics">
+                    <li>Session score will appear here.</li>
+                    <li>Pose metrics will update live during the session.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- SCORE PROGRESS BAR -->
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Live Posture Health Score</h3>
+        </div>
+        <div class="panel-body">
+            <div class="score-wrap">
+                <div class="score-track">
+                    <!-- FIXED: Defaults perfectly to the right edge so it doesn't bleed -->
+                    <span id="uiScoreMarker" class="score-marker" style="left: calc(98% - 3px);"></span>
+                </div>
+                <!-- FIXED: Defaults to 100% instead of --% -->
+                <div id="uiScoreValue" class="score-value">100%</div>
+            </div>
+            <p id="uiScoreStatus" class="score-status">
+                Status: Ready (Camera disconnected)
+            </p>
+        </div>
+    </section>
+
+    <!-- HISTORY & INSIGHTS -->
+    <section class="layout-grid">
+        <article class="panel">
+            <div class="panel-head">
+                <h3 class="panel-title">Session History</h3>
+            </div>
+            <div class="panel-body">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Duration</th>
+                            <th>Posture Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <tr><td colspan="3" style="text-align: center; padding: 2rem;">Loading data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+        <aside class="insight-box">
+            <h3 class="insight-title">Posture Insight</h3>
+            <p class="insight-text" id="uiInsightText">Analyzing your recent sessions...</p>
+            <div class="tip" id="uiInsightTip">
+                <strong>Tip:</strong> Keep shoulders relaxed, feet flat, and place your screen at eye level.
+            </div>
+        </aside>
+    </section>
+
+</div>
+
+<!-- SERVERLESS JAVASCRIPT LOGIC -->
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyDhVpz_D9OTfckaLA792N0c-bqmGnBd7G4",
+    authDomain: "posturehealthtracker.firebaseapp.com",
+    databaseURL: "https://posturehealthtracker-default-rtdb.firebaseio.com",
+    projectId: "posturehealthtracker",
+    storageBucket: "posturehealthtracker.firebasestorage.app",
+    messagingSenderId: "330967946233",
+    appId: "1:330967946233:web:995732d6b544e67a46e328",
+    measurementId: "G-5YG2GL2W9Z"
+};
+
+if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+const db = firebase.database();       
+const firestore = firebase.firestore(); 
+const auth = firebase.auth();
+
+let currentUser = null;
+let currentSessionStartTime = localStorage.getItem('sessionStartTime') ? new Date(localStorage.getItem('sessionStartTime')) : null;
+let currentSessionId = localStorage.getItem('activeSessionId') || null;
+let latestLiveScore = 100;
+
+const cameraPlaceholder = 'data:image/svg+xml;base64,' + btoa(`
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+    <defs>
+        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#dfe8f7"/>
+            <stop offset="100%" stop-color="#f5f8fd"/>
+        </linearGradient>
+    </defs>
+    <rect width="640" height="480" rx="32" fill="url(#g)"/>
+    <rect x="90" y="80" width="460" height="300" rx="28" fill="#ffffff" stroke="#cad3e5" stroke-width="4"/>
+    <circle cx="320" cy="230" r="58" fill="#48a2f3" opacity="0.15"/>
+    <text x="320" y="210" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#24426f" font-weight="700">Camera Preview</text>
+    <text x="320" y="250" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#5a6d8e">Start monitoring to begin tracking</text>
+</svg>`);
+
+function updateCameraPanel(data) {
+        const frame = document.getElementById('uiCameraFrame');
+        const chip = document.getElementById('uiCameraChip');
+        const status = document.getElementById('uiCameraStatus');
+        const metrics = document.getElementById('uiCameraMetrics');
+
+        if (data && data.cameraFrame) {
+                frame.src = data.cameraFrame;
+        } else {
+                frame.src = cameraPlaceholder;
+        }
+
+        const cameraActive = Boolean(data && data.cameraActive);
+        chip.textContent = cameraActive ? 'Camera active' : 'Camera idle';
+        chip.style.background = cameraActive ? '#e8f6ec' : '#eef2f7';
+        chip.style.color = cameraActive ? '#2f8f46' : '#5a6d8e';
+
+        if (!data || !cameraActive) {
+                status.textContent = 'Start monitoring to activate the Hailo camera feed.';
+                metrics.innerHTML = '<li>Session score will appear here.</li><li>Pose metrics will update live during the session.</li>';
+                return;
+        }
+
+        const frameScore = Number.isFinite(data.frameScore) ? data.frameScore : data.score;
+        const sessionScore = Number.isFinite(data.sessionScore) ? data.sessionScore : data.score;
+        const cameraMetrics = data.cameraMetrics || {};
+
+        status.textContent = `Live frame score ${frameScore}% and session score ${sessionScore}%`;
+        metrics.innerHTML = `
+                <li>Frame score: ${frameScore}%</li>
+                <li>Session score: ${sessionScore}%</li>
+                <li>Shoulder alignment: ${cameraMetrics.shoulder_alignment ?? 'n/a'}</li>
+                <li>Neck angle: ${cameraMetrics.neck_angle ?? 'n/a'}</li>
+        `;
+}
+
+// 1. AUTHENTICATION & DATA LOADING
+auth.onAuthStateChanged(user => {
+    if (!user) { 
+        window.location.href = 'login.html'; 
+    } else { 
+        currentUser = user;
+        document.getElementById('userEmailDisplay').innerText = user.email; 
+        loadDashboardData(user.uid);
+    }
+});
+
+function handleLogout() {
+    auth.signOut().then(() => { window.location.href = 'login.html'; });
+}
+
+// 2. FETCH HISTORICAL DATA (real-time listener — auto-updates when sessions are saved)
+function loadDashboardData(uid) {
+    firestore.collection('sessions')
+        .where('userId', '==', uid)
+        .onSnapshot(snapshot => {
+            if (snapshot.empty) {
+                document.getElementById('valTotalSessions').innerText = "0";
+                document.getElementById('valAvgScore').innerText = "0%";
+                document.getElementById('valTotalTime').innerText = "0h 0m";
+                document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center;'>No sessions yet. Click start to begin!</td></tr>";
+                document.getElementById('uiInsightText').innerText = "Start your first session to generate insights.";
+                return;
+            }
+
+            let totalScore = 0;
+            let totalDuration = 0;
+            let sessions = [];
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                sessions.push({ id: doc.id, ...data });
+                totalScore += (data.sessionScore || 0);
+                totalDuration += (data.duration || 0);
+            });
+
+            sessions.sort((a, b) => b.startTime.toDate() - a.startTime.toDate());
+
+            const avgScore = Math.round((totalScore / sessions.length) * 100);
+            const hours = Math.floor(totalDuration / 3600);
+            const mins = Math.floor((totalDuration % 3600) / 60);
+
+            document.getElementById('valTotalSessions').innerText = sessions.length;
+            document.getElementById('valAvgScore').innerText = avgScore + "%";
+            document.getElementById('valTotalTime').innerText = `${hours}h ${mins}m`;
+
+            if (sessions.length >= 2) {
+                const lastScore = Math.round((sessions[0].sessionScore || 0) * 100);
+                const prevScore = Math.round((sessions[1].sessionScore || 0) * 100);
+                const diff = lastScore - prevScore;
+                if (diff > 0) document.getElementById('uiInsightText').innerText = `Your score improved by ${diff}% in your last session!`;
+                else if (diff < 0) document.getElementById('uiInsightText').innerText = `Your score dropped by ${Math.abs(diff)}% last time. Keep your core tight today.`;
+                else document.getElementById('uiInsightText').innerText = `Your posture score was stable in your last session.`;
+            }
+
+            let html = "";
+            for (let i = 0; i < Math.min(6, sessions.length); i++) {
+                const s = sessions[i];
+                const dateStr = s.startTime.toDate().toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+                const durMin = Math.max(1, Math.round((s.duration || 0) / 60));
+                const scorePct = Math.round((s.sessionScore || 0) * 100);
+
+                html += `
+                <tr onclick="window.location='session_detail.html?id=${s.id}'">
+                    <td>${dateStr}</td>
+                    <td>${durMin} min</td>
+                    <td style="color: ${scorePct >= 70 ? '#2f8f46' : (scorePct >= 50 ? '#996515' : '#be3f3f')}; font-weight:700;">${scorePct}%</td>
+                </tr>`;
+            }
+            document.getElementById('historyTableBody').innerHTML = html;
+
+        }, error => {
+            console.error("Error loading data:", error);
+            document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center; color:#be3f3f;'>Error: " + error.message + "</td></tr>";
+        });
+}
+
+// 3. START/STOP SESSION LOGIC
+let isSessionActive = false;
+db.ref('system_state/camera_command').on('value', (snapshot) => {
+    const status = snapshot.val();
+    const btn = document.getElementById('mainActionButton');
+    const dot = document.getElementById('uiStatusDot');
+    const text = document.getElementById('uiStatusText');
+    const subtext = document.getElementById('uiStatusSubtext');
+
+    if (status === "ON") {
+        isSessionActive = true;
+        btn.innerText = "End Monitoring";
+        btn.className = "btn btn-stop monitor-btn";
+        dot.classList.add("active");
+        text.innerText = "Status: Active";
+        subtext.innerText = "Monitoring session running.";
+    } else {
+        isSessionActive = false;
+        btn.innerText = "Start Monitoring";
+        btn.className = "btn btn-primary monitor-btn";
+        dot.classList.remove("active");
+        text.innerText = "Status: Not Active";
+        subtext.innerText = "No monitoring session running.";
+    }
+});
+
+window.toggleSession = async function() {
+    console.log("[toggleSession] fired. isSessionActive:", isSessionActive, "| currentUser:", currentUser?.uid, "| currentSessionStartTime:", currentSessionStartTime);
+    try {
+        if (!isSessionActive) {
+            currentSessionStartTime = new Date();
+            localStorage.setItem('sessionStartTime', currentSessionStartTime.toISOString());
+
+            const sessionDocRef = firestore.collection('sessions').doc();
+            currentSessionId = sessionDocRef.id;
+            localStorage.setItem('activeSessionId', currentSessionId);
+
+            await sessionDocRef.set({
+                userId: currentUser.uid,
+                username: currentUser.displayName || "User",
+                startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
+                status: 'active',
+                createdAt: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
+                sessionScore: latestLiveScore / 100,
+                duration: 0,
+                sitDuration: 0
+            });
+
+            console.log("[toggleSession] STARTING session at", currentSessionStartTime.toISOString());
+            await db.ref('system_state').update({
+                camera_command: "ON",
+                activeSessionId: currentSessionId,
+                sessionStartedAt: currentSessionStartTime.toISOString()
+            });
+        } else {
+            console.log("[toggleSession] STOPPING session.");
+
+            // Save to Firestore FIRST before touching Realtime DB
+            if (!currentSessionStartTime) {
+                const stored = localStorage.getItem('sessionStartTime');
+                console.log("[toggleSession] startTime not in memory, localStorage value:", stored);
+                if (stored) currentSessionStartTime = new Date(stored);
+            }
+
+            console.log("[toggleSession] currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser?.uid);
+
+            if (currentSessionStartTime && currentUser) {
+                const endTime = new Date();
+                const durationSeconds = Math.round((endTime - currentSessionStartTime) / 1000);
+                console.log("[toggleSession] Updating Firestore. Duration:", durationSeconds, "s | Score:", latestLiveScore);
+
+                try {
+                    if (currentSessionId) {
+                        await firestore.collection('sessions').doc(currentSessionId).update({
+                            endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                            duration: durationSeconds,
+                            sitDuration: durationSeconds,
+                            sessionScore: latestLiveScore / 100,
+                            status: 'completed',
+                            updatedAt: firebase.firestore.Timestamp.fromDate(endTime)
+                        });
+                        console.log("[toggleSession] Session updated! Doc ID:", currentSessionId);
+                    }
+                    localStorage.removeItem('sessionStartTime');
+                    localStorage.removeItem('activeSessionId');
+                    currentSessionId = null;
+                    currentSessionStartTime = null;
+                } catch (saveError) {
+                    console.error("[toggleSession] Firestore save FAILED:", saveError);
+                    alert("Save failed: " + saveError.message);
+                }
+            } else {
+                console.warn("[toggleSession] Skipped save. currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser);
+                localStorage.removeItem('sessionStartTime');
+                localStorage.removeItem('activeSessionId');
+                currentSessionId = null;
+                currentSessionStartTime = null;
+            }
+
+            console.log("[toggleSession] Updating RTDB camera_command OFF...");
+            await db.ref('system_state').update({ camera_command: "OFF", activeSessionId: null });
+            console.log("[toggleSession] RTDB update done.");
+        }
+    } catch (error) {
+        console.error("[toggleSession] Outer error:", error);
+        alert("Database connection failed: " + error.message);
+    }
+};
+
+// 4. LIVE SENSOR UPDATES
+db.ref('live_data').on('value', (snapshot) => {
+    let data = snapshot.val();
+    
+    // Default to 100 if empty so it doesn't break math
+    if (!data || data.score === undefined) {
+        data = { score: 100 }; 
+    }
+    
+    latestLiveScore = data.score;
+    updateCameraPanel(data);
+    
+    // Visually Clamp between 2% and 98% to prevent edge bleeding
+    let safePosition = Math.max(2, Math.min(98, data.score));
+    
+    document.getElementById('uiScoreValue').innerText = data.score + "%";
+    document.getElementById('uiScoreMarker').style.left = `calc(${safePosition}% - 3px)`; 
+    
+    const statusEl = document.getElementById('uiScoreStatus');
+    if (isSessionActive) {
+        if (data.score >= 80) { statusEl.innerText = `Status: Excellent Alignment | Frame ${data.frameScore ?? data.score}%`; statusEl.className = "score-status"; }
+        else if (data.score >= 60) { statusEl.innerText = `Status: Acceptable Alignment | Frame ${data.frameScore ?? data.score}%`; statusEl.className = "score-status"; }
+        else { statusEl.innerText = `Status: Correction Needed | Frame ${data.frameScore ?? data.score}%`; statusEl.className = "score-status alert"; }
+    } else {
+        statusEl.innerText = "Status: Ready (Camera disconnected)";
+        statusEl.className = "score-status";
+    }
+});
+</script>
+
+</body>
+</html>
