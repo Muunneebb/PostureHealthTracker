@@ -259,73 +259,70 @@ function handleLogout() {
     auth.signOut().then(() => { window.location.href = 'login.html'; });
 }
 
-// 2. FETCH HISTORICAL DATA
-async function loadDashboardData(uid) {
-    try {
-        const snapshot = await firestore.collection('sessions')
-            .where('userId', '==', uid)
-            .get();
+// 2. FETCH HISTORICAL DATA (real-time listener — auto-updates when sessions are saved)
+function loadDashboardData(uid) {
+    firestore.collection('sessions')
+        .where('userId', '==', uid)
+        .onSnapshot(snapshot => {
+            if (snapshot.empty) {
+                document.getElementById('valTotalSessions').innerText = "0";
+                document.getElementById('valAvgScore').innerText = "0%";
+                document.getElementById('valTotalTime').innerText = "0h 0m";
+                document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center;'>No sessions yet. Click start to begin!</td></tr>";
+                document.getElementById('uiInsightText').innerText = "Start your first session to generate insights.";
+                return;
+            }
 
-        if (snapshot.empty) {
-            document.getElementById('valTotalSessions').innerText = "0";
-            document.getElementById('valAvgScore').innerText = "0%";
-            document.getElementById('valTotalTime').innerText = "0h 0m";
-            document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center;'>No sessions yet. Click start to begin!</td></tr>";
-            document.getElementById('uiInsightText').innerText = "Start your first session to generate insights.";
-            return;
-        }
+            let totalScore = 0;
+            let totalDuration = 0;
+            let sessions = [];
 
-        let totalScore = 0;
-        let totalDuration = 0;
-        let sessions = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                sessions.push({ id: doc.id, ...data });
+                totalScore += (data.sessionScore || 0);
+                totalDuration += (data.duration || 0);
+            });
 
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            sessions.push({ id: doc.id, ...data });
-            totalScore += (data.sessionScore || 0);
-            totalDuration += (data.duration || 0);
+            sessions.sort((a, b) => b.startTime.toDate() - a.startTime.toDate());
+
+            const avgScore = Math.round((totalScore / sessions.length) * 100);
+            const hours = Math.floor(totalDuration / 3600);
+            const mins = Math.floor((totalDuration % 3600) / 60);
+
+            document.getElementById('valTotalSessions').innerText = sessions.length;
+            document.getElementById('valAvgScore').innerText = avgScore + "%";
+            document.getElementById('valTotalTime').innerText = `${hours}h ${mins}m`;
+
+            if (sessions.length >= 2) {
+                const lastScore = Math.round((sessions[0].sessionScore || 0) * 100);
+                const prevScore = Math.round((sessions[1].sessionScore || 0) * 100);
+                const diff = lastScore - prevScore;
+                if (diff > 0) document.getElementById('uiInsightText').innerText = `Your score improved by ${diff}% in your last session!`;
+                else if (diff < 0) document.getElementById('uiInsightText').innerText = `Your score dropped by ${Math.abs(diff)}% last time. Keep your core tight today.`;
+                else document.getElementById('uiInsightText').innerText = `Your posture score was stable in your last session.`;
+            }
+
+            let html = "";
+            for (let i = 0; i < Math.min(6, sessions.length); i++) {
+                const s = sessions[i];
+                const dateStr = s.startTime.toDate().toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+                const durMin = Math.max(1, Math.round((s.duration || 0) / 60));
+                const scorePct = Math.round((s.sessionScore || 0) * 100);
+
+                html += `
+                <tr onclick="window.location='session_detail.html?id=${s.id}'">
+                    <td>${dateStr}</td>
+                    <td>${durMin} min</td>
+                    <td style="color: ${scorePct >= 70 ? '#2f8f46' : (scorePct >= 50 ? '#996515' : '#be3f3f')}; font-weight:700;">${scorePct}%</td>
+                </tr>`;
+            }
+            document.getElementById('historyTableBody').innerHTML = html;
+
+        }, error => {
+            console.error("Error loading data:", error);
+            document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center; color:#be3f3f;'>Error: " + error.message + "</td></tr>";
         });
-
-        sessions.sort((a, b) => b.startTime.toDate() - a.startTime.toDate());
-
-        const avgScore = Math.round((totalScore / sessions.length) * 100);
-        const hours = Math.floor(totalDuration / 3600);
-        const mins = Math.floor((totalDuration % 3600) / 60);
-
-        document.getElementById('valTotalSessions').innerText = sessions.length;
-        document.getElementById('valAvgScore').innerText = avgScore + "%";
-        document.getElementById('valTotalTime').innerText = `${hours}h ${mins}m`;
-
-        if (sessions.length >= 2) {
-            const lastScore = Math.round((sessions[0].sessionScore || 0) * 100);
-            const prevScore = Math.round((sessions[1].sessionScore || 0) * 100);
-            const diff = lastScore - prevScore;
-            if (diff > 0) document.getElementById('uiInsightText').innerText = `Your score improved by ${diff}% in your last session!`;
-            else if (diff < 0) document.getElementById('uiInsightText').innerText = `Your score dropped by ${Math.abs(diff)}% last time. Keep your core tight today.`;
-            else document.getElementById('uiInsightText').innerText = `Your posture score was stable in your last session.`;
-        }
-
-        let html = "";
-        for (let i = 0; i < Math.min(6, sessions.length); i++) {
-            const s = sessions[i];
-            const dateStr = s.startTime.toDate().toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
-            const durMin = Math.max(1, Math.round((s.duration || 0) / 60)); // Ensure it shows at least 1 min
-            const scorePct = Math.round((s.sessionScore || 0) * 100);
-            
-            html += `
-            <tr onclick="window.location='session_detail.html?id=${s.id}'">
-                <td>${dateStr}</td>
-                <td>${durMin} min</td>
-                <td style="color: ${scorePct >= 70 ? '#2f8f46' : (scorePct >= 50 ? '#996515' : '#be3f3f')}; font-weight:700;">${scorePct}%</td>
-            </tr>`;
-        }
-        document.getElementById('historyTableBody').innerHTML = html;
-
-    } catch (error) {
-        console.error("Error loading data:", error);
-        // Error handling if Firestore rules block the user
-        document.getElementById('historyTableBody').innerHTML = "<tr><td colspan='3' style='text-align:center; color:#be3f3f;'>Error: Database permission denied. Check Firestore rules.</td></tr>";
-    }
 }
 
 // 3. START/STOP SESSION LOGIC
@@ -389,7 +386,6 @@ window.toggleSession = async function() {
 
                     localStorage.removeItem('sessionStartTime');
                     currentSessionStartTime = null;
-                    loadDashboardData(currentUser.uid);
                 } catch (saveError) {
                     alert("Failed to save session to history! Check your Firestore Rules.");
                     console.error(saveError);
