@@ -330,14 +330,24 @@ function updateCameraPanel(data) {
         const frameScore = Number.isFinite(data.frameScore) ? data.frameScore : data.score;
         const sessionScore = Number.isFinite(data.sessionScore) ? data.sessionScore : data.score;
         const cameraMetrics = data.cameraMetrics || {};
+        const postureStatus = data.postureStatus || 'Unknown';
+        const postureReason = data.postureReason || '';
 
-        status.textContent = `Live frame score ${frameScore}% and session score ${sessionScore}%`;
-        metrics.innerHTML = `
+        status.textContent = `Live frame score ${frameScore}% and session score ${sessionScore}% | Posture: ${postureStatus}`;
+        
+        let metricsHtml = `
                 <li>Frame score: ${frameScore}%</li>
                 <li>Session score: ${sessionScore}%</li>
+                <li>Posture status: ${postureStatus}`;
+        if (postureReason) {
+                metricsHtml += ` (${postureReason})`;
+        }
+        metricsHtml += `</li>
                 <li>Shoulder alignment: ${cameraMetrics.shoulder_alignment ?? 'n/a'}</li>
                 <li>Neck angle: ${cameraMetrics.neck_angle ?? 'n/a'}</li>
         `;
+        
+        metrics.innerHTML = metricsHtml;
 }
 
 // 1. AUTHENTICATION & DATA LOADING

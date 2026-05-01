@@ -67,6 +67,21 @@ def score_from_camera_metrics(camera_metrics):
     if not camera_metrics:
         return 100
 
+    # If using Hailo/side-view posture detection (is_bad flag present)
+    if 'is_bad' in camera_metrics:
+        if camera_metrics['is_bad']:
+            # Bad posture detected → lower score based on reason
+            reason = camera_metrics.get('reason', 'Bad posture')
+            if 'slouch' in reason.lower():
+                return 60  # Slouching is moderate issue
+            elif 'head' in reason.lower():
+                return 55  # Head forward is more serious
+            else:
+                return 50  # Generic bad posture
+        else:
+            return 95  # Good posture detected
+    
+    # Fallback: MediaPipe-style metrics (shoulder_alignment + neck_angle)
     score = 100.0
     shoulder_alignment = camera_metrics.get('shoulder_alignment')
     neck_angle = camera_metrics.get('neck_angle')
@@ -135,12 +150,18 @@ def main_loop():
                                 "timestamp": datetime.utcnow(),
                                 "frameScore": last_frame_score,
                                 "sessionScore": round(session_score_total / session_frame_count, 2),
-                                "cameraMetrics": camera_metrics
+                                "cameraMetrics": last_camera_metrics,
+                                "postureStatus": "Good" if not last_camera_metrics.get('is_bad') else "Bad",
+                                "postureReason": last_camera_metrics.get('reason', '')
                             })
 
                     session_score = int(round(session_score_total / session_frame_count)) if session_frame_count else last_frame_score
 
                     camera_active = bool(cam.available and camera_started_for_session)
+
+                    # Extract posture status if available (Hailo detection)
+                    posture_status = "Good" if not last_camera_metrics.get('is_bad') else "Bad"
+                    posture_reason = last_camera_metrics.get('reason', '')
 
                     live_payload = {
                         "score": session_score,
@@ -149,6 +170,8 @@ def main_loop():
                         "activeSessionId": active_session_id,
                         "cameraActive": camera_active,
                         "cameraMetrics": last_camera_metrics,
+                        "postureStatus": posture_status,
+                        "postureReason": posture_reason,
                         "cameraFrame": last_preview_data_url,
                         "updatedAt": int(time.time())
                     }
