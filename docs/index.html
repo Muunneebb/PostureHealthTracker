@@ -362,13 +362,15 @@ window.toggleSession = async function() {
             await db.ref('system_state').update({ camera_command: "ON" });
         } else {
             console.log("[toggleSession] STOPPING session.");
-            await db.ref('system_state').update({ camera_command: "OFF" });
 
+            // Save to Firestore FIRST before touching Realtime DB
             if (!currentSessionStartTime) {
                 const stored = localStorage.getItem('sessionStartTime');
                 console.log("[toggleSession] startTime not in memory, localStorage value:", stored);
                 if (stored) currentSessionStartTime = new Date(stored);
             }
+
+            console.log("[toggleSession] currentSessionStartTime:", currentSessionStartTime, "| currentUser:", currentUser?.uid);
 
             if (currentSessionStartTime && currentUser) {
                 const endTime = new Date();
@@ -398,6 +400,10 @@ window.toggleSession = async function() {
                 localStorage.removeItem('sessionStartTime');
                 currentSessionStartTime = null;
             }
+
+            console.log("[toggleSession] Updating RTDB camera_command OFF...");
+            await db.ref('system_state').update({ camera_command: "OFF" });
+            console.log("[toggleSession] RTDB update done.");
         }
     } catch (error) {
         console.error("[toggleSession] Outer error:", error);
