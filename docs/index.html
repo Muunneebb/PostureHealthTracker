@@ -460,10 +460,22 @@ db.ref('system_state/camera_command').on('value', (snapshot) => {
 window.toggleSession = async function() {
     try {
         if (!isSessionActive) {
+            // Generate a unique session ID
             currentSessionStartTime = new Date();
+            const sessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+            
             localStorage.setItem('sessionStartTime', currentSessionStartTime.toISOString());
-            console.log("[toggleSession] STARTING session at", currentSessionStartTime.toISOString());
-            await db.ref('system_state').update({ camera_command: "ON" });
+            localStorage.setItem('activeSessionId', sessionId);
+            currentSessionId = sessionId;
+            
+            console.log("[toggleSession] STARTING session:", sessionId);
+            
+            // Send command and session ID to Pi via Firebase RTDB
+            await db.ref('system_state').update({ 
+                camera_command: "ON",
+                activeSessionId: sessionId
+            });
+            console.log("[toggleSession] Firebase updated with camera_command=ON and activeSessionId");
         } else {
             // Save to Firestore BEFORE touching Realtime DB so a hanging RTDB write doesn't block the save
             if (!currentSessionStartTime) {
@@ -478,6 +490,7 @@ window.toggleSession = async function() {
 
                 try {
                     const docRef = await firestore.collection('sessions').add({
+                        sessionId: currentSessionId,
                         userId: currentUser.uid,
                         username: currentUser.displayName || "User",
                         startTime: firebase.firestore.Timestamp.fromDate(currentSessionStartTime),
