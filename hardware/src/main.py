@@ -20,12 +20,13 @@ else:
 # This connects your Pi directly to the website without Flask
 FIREBASE_URL = "https://posturehealthtracker-default-rtdb.firebaseio.com"
 HAILO_STATUS_FILE = "/tmp/posturehealthtracker_hailo.json"
+HAILO_LOG_FILE = "/tmp/posturehealthtracker_hailo.log"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-HAILO_SCRIPT = os.path.join(REPO_ROOT, "src", "pose_estimation.py")
 HAILO_EXAMPLES_DIR = os.environ.get("HAILO_EXAMPLES_DIR", os.path.expanduser("~/hailo-rpi5-examples"))
 
 firestore_client = None
 hailo_process = None
+hailo_log_handle = None
 
 
 def get_firestore_client():
@@ -72,36 +73,48 @@ def read_hailo_status():
 
 
 def start_hailo_process():
-    global hailo_process
+    global hailo_process, hailo_log_handle
 
     if hailo_process and hailo_process.poll() is None:
         return True
 
-    if not os.path.exists(HAILO_SCRIPT):
-        print(f"Hailo script not found at {HAILO_SCRIPT}")
+    setup_env = os.path.join(HAILO_EXAMPLES_DIR, "setup_env.sh")
+    hailo_example = os.path.join(HAILO_EXAMPLES_DIR, "basic_pipelines", "pose_estimation.py")
+
+    if not os.path.exists(setup_env):
+        print(f"Hailo setup_env.sh not found at {setup_env}")
         return False
 
-    command = (
-        f"cd {shlex.quote(HAILO_EXAMPLES_DIR)} && "
-        f"source setup_env.sh && "
-        f"python {shlex.quote(HAILO_SCRIPT)} --input rpi --use-frame"
-    )
+    if not os.path.exists(hailo_example):
+        print(f"Hailo example not found at {hailo_example}")
+        return False
+
+    command = f"cd {shlex.quote(HAILO_EXAMPLES_DIR)} && source setup_env.sh && python basic_pipelines/pose_estimation.py --input rpi --use-frame"
 
     try:
+        hailo_log_handle = open(HAILO_LOG_FILE, "a", encoding="utf-8")
+        hailo_log_handle.write(f"\n=== Starting Hailo pipeline at {datetime.utcnow().isoformat()}Z ===\n")
+        hailo_log_handle.flush()
         hailo_process = subprocess.Popen(
             ["bash", "-lc", command],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=hailo_log_handle,
+            stderr=hailo_log_handle,
         )
         return True
     except Exception as error:
         print(f"Failed to start Hailo process: {error}")
         hailo_process = None
+        if hailo_log_handle:
+            try:
+                hailo_log_handle.close()
+            except Exception:
+                pass
+            hailo_log_handle = None
         return False
 
 
 def stop_hailo_process():
-    global hailo_process
+    global hailo_process, hailo_log_handle
 
     if not hailo_process:
         return
@@ -117,6 +130,12 @@ def stop_hailo_process():
         pass
     finally:
         hailo_process = None
+        if hailo_log_handle:
+            try:
+                hailo_log_handle.close()
+            except Exception:
+                pass
+            hailo_log_handle = None
 
 
 def save_reading(session_id, payload):
@@ -207,8 +226,16 @@ def main_loop():
                             camera_started_for_session = cam.start()
                         else:
                             camera_started_for_session = True
+                            print("Hailo pipeline started; waiting for live camera frames...")
 
                     if using_hailo_pipeline:
+                        if hailo_process and hailo_process.poll() is not None:
+                            print(f"Hailo pipeline exited with code {hailo_process.returncode}; falling back to Picamera2")
+                            stop_hailo_process()
+                            using_hailo_pipeline = False
+                            camera_started_for_session = cam.start()
+                            continue
+
                         hailo_status = read_hailo_status() or {}
                         hailo_updated_at = hailo_status.get("updatedAt")
                         if hailo_status and hailo_updated_at != last_hailo_update_at:
