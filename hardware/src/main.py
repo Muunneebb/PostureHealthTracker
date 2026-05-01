@@ -46,7 +46,10 @@ def get_firestore_client():
 
 
 def push_live_data(payload):
-    requests.put(f"{FIREBASE_URL}/live_data.json", json=payload, timeout=2)
+    try:
+        requests.put(f"{FIREBASE_URL}/live_data.json", json=payload, timeout=30)
+    except:
+        pass  # Silently skip failed writes
 
 
 def save_reading(session_id, payload):
@@ -111,7 +114,7 @@ def main_loop():
         while True:
             # 2. CHECK THE CLOUD (Did the user click "Start" on the website?)
             try:
-                state_resp = requests.get(f"{FIREBASE_URL}/system_state.json", timeout=2)
+                state_resp = requests.get(f"{FIREBASE_URL}/system_state.json", timeout=30)
                 state = state_resp.json() or {}
                 requested_session_id = state.get('activeSessionId')
                 
