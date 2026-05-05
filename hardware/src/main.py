@@ -140,13 +140,20 @@ def stop_hailo_process():
 
     try:
         if hailo_process.poll() is None:
+            logger.info(f"Terminating Hailo process {hailo_process.pid}...")
             hailo_process.terminate()
             try:
-                hailo_process.wait(timeout=5)
-            except Exception:
+                hailo_process.wait(timeout=3)
+                logger.info(f"Hailo process terminated gracefully")
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Hailo process did not terminate, killing...")
                 hailo_process.kill()
-    except Exception:
-        pass
+                hailo_process.wait(timeout=2)
+                logger.info(f"Hailo process killed")
+            # Give the OS time to clean up resources (window, etc)
+            time.sleep(0.5)
+    except Exception as e:
+        logger.error(f"Error stopping Hailo process: {e}")
     finally:
         hailo_process = None
         if hailo_log_handle:
