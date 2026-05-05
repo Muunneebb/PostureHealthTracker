@@ -87,16 +87,18 @@ def draw_ui(frame, is_bad, alert, reason, w, h):
 
 def publish_status(frame, is_bad, reason, w, h):
     preview = frame
-    if preview is not None and len(preview.shape) == 3 and preview.shape[1] > 360:
+    if preview is not None and len(preview.shape) == 3:
         height, width = preview.shape[:2]
-        target_width = 360
-        target_height = int(height * (target_width / width))
-        preview = cv2.resize(preview, (target_width, target_height))
+        # Use a smaller preview to reduce bandwidth and improve responsiveness
+        target_width = 300
+        if width > target_width:
+            target_height = int(height * (target_width / width))
+            preview = cv2.resize(preview, (target_width, target_height))
 
     if preview is None:
         return
 
-    ok, buffer = cv2.imencode('.jpg', preview, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+    ok, buffer = cv2.imencode('.jpg', preview, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
     if not ok:
         return
 
@@ -120,6 +122,13 @@ def publish_status(frame, is_bad, reason, w, h):
     except Exception:
         pass
 
+    # Also write a compact binary JPEG for local serving (faster than base64 over RTDB)
+    try:
+        with open('/tmp/posturehealthtracker_frame.jpg', 'wb') as f:
+            f.write(buffer.tobytes())
+    except Exception:
+        pass
+
 def get_keypoints():
     return {
         'nose': 0,
@@ -138,7 +147,8 @@ class user_app_callback_class(app_callback_class):
         super().__init__()
         self.use_frame = True
         self.frame_count = 0
-        self.publish_interval = 3  # Publish status every 3 frames (~100ms at 30fps)
+        # Publish status every 2 frames to improve perceived responsiveness
+        self.publish_interval = 2
 
 def app_callback(pad, info, user_data):
     global bad_start, alerting
