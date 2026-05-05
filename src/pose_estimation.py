@@ -96,7 +96,7 @@ def publish_status(frame, is_bad, reason, w, h):
     if preview is None:
         return
 
-    ok, buffer = cv2.imencode('.jpg', preview, [int(cv2.IMWRITE_JPEG_QUALITY), 72])
+    ok, buffer = cv2.imencode('.jpg', preview, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
     if not ok:
         return
 
@@ -137,6 +137,8 @@ class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
         self.use_frame = True
+        self.frame_count = 0
+        self.publish_interval = 3  # Publish status every 3 frames (~100ms at 30fps)
 
 def app_callback(pad, info, user_data):
     global bad_start, alerting
@@ -186,7 +188,10 @@ def app_callback(pad, info, user_data):
 
         if frame is not None:
             draw_ui(frame, is_bad, alerting, reason, width, height)
-            publish_status(frame, is_bad, reason, width, height)
+            # Only publish status every N frames to reduce I/O and lag
+            user_data.frame_count += 1
+            if user_data.frame_count % user_data.publish_interval == 0:
+                publish_status(frame, is_bad, reason, width, height)
         break
 
     if not found and frame is not None:

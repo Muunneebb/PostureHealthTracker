@@ -74,9 +74,21 @@ body {
 .panel-title { margin: 0; color: #24426f; font-size: 1.45rem; font-weight: 600; }
 .panel-body { padding: 1rem 1.25rem; }
 
-.camera-panel { display: grid; grid-template-columns: 260px 1fr; gap: 1rem; align-items: start; }
+.camera-panel { 
+    display: grid; 
+    grid-template-columns: 1fr; 
+    gap: 1rem; 
+    align-items: start; 
+}
+@media (min-width: 768px) {
+    .camera-panel { 
+        grid-template-columns: 1fr 300px; 
+    }
+}
 .camera-frame {
     width: 100%;
+    height: auto;
+    max-height: 500px;
     aspect-ratio: 4 / 3;
     border-radius: 14px;
     border: 1px solid #cad3e5;
@@ -84,7 +96,14 @@ body {
     object-fit: cover;
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
 }
-.camera-meta { display: grid; gap: 0.5rem; }
+.camera-meta { 
+    display: grid; 
+    gap: 0.7rem; 
+    @media (max-width: 767px) {
+        grid-template-columns: auto 1fr;
+        align-items: start;
+    }
+}
 .camera-chip {
     display: inline-flex;
     align-items: center;
@@ -106,7 +125,24 @@ body {
 .status-subtext { color: #667898; font-size: 0.98rem; margin: 0 0 1rem; }
 
 .monitor-action { display: flex; justify-content: center; }
-.monitor-btn { min-width: 260px; border-radius: 8px; font-size: 1.05rem; font-weight: 600; padding: 10px 20px; cursor: pointer; border: none; color: white; }
+.monitor-btn { 
+    min-width: auto;
+    width: 100%;
+    border-radius: 8px; 
+    font-size: 1.05rem; 
+    font-weight: 600; 
+    padding: 12px 20px; 
+    cursor: pointer; 
+    border: none; 
+    color: white; 
+    transition: all 0.3s ease;
+}
+@media (max-width: 600px) {
+    .monitor-btn { 
+        font-size: 0.95rem; 
+        padding: 10px 16px; 
+    }
+}
 .btn-primary { background-color: #48a2f3; }
 .btn-stop { background-color: #be3f3f; }
 
@@ -468,6 +504,10 @@ window.toggleSession = async function() {
             localStorage.setItem('activeSessionId', sessionId);
             currentSessionId = sessionId;
             
+            const btn = document.getElementById('mainActionButton');
+            btn.disabled = true;
+            btn.innerText = "Starting...";
+            
             console.log("[toggleSession] STARTING session:", sessionId);
             
             // Send command and session ID to Pi via Firebase RTDB
@@ -476,7 +516,12 @@ window.toggleSession = async function() {
                 activeSessionId: sessionId
             });
             console.log("[toggleSession] Firebase updated with camera_command=ON and activeSessionId");
+            btn.disabled = false;
         } else {
+            const btn = document.getElementById('mainActionButton');
+            btn.disabled = true;
+            btn.innerText = "Stopping...";
+            
             // Save to Firestore BEFORE touching Realtime DB so a hanging RTDB write doesn't block the save
             if (!currentSessionStartTime) {
                 const stored = localStorage.getItem('sessionStartTime');
@@ -507,7 +552,9 @@ window.toggleSession = async function() {
                     currentSessionStartTime = null;
                 } catch (saveError) {
                     console.error("Firestore save failed:", saveError);
+                    btn.disabled = false;
                     alert("Save failed: " + saveError.message);
+                    return;
                 }
             } else {
                 localStorage.removeItem('sessionStartTime');
@@ -519,10 +566,14 @@ window.toggleSession = async function() {
             console.log("[toggleSession] Updating RTDB camera_command OFF...");
             await db.ref('system_state').update({ camera_command: "OFF" });
             console.log("[toggleSession] RTDB update done.");
+            btn.disabled = false;
         }
     } catch (error) {
         console.error("toggleSession error:", error);
         alert("Database connection failed: " + error.message);
+        const btn = document.getElementById('mainActionButton');
+        btn.disabled = false;
+        btn.innerText = isSessionActive ? "End Monitoring" : "Start Monitoring";
     }
 };
 
