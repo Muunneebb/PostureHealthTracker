@@ -3,9 +3,25 @@ import os
 import json
 import shlex
 import subprocess
+import logging
+import traceback
 from datetime import datetime
 from importlib import import_module
 import requests # <-- ADDED: To talk directly to the cloud
+
+# ==========================================
+# LOGGING SETUP
+# ==========================================
+LOG_FILE = "/tmp/posturehealthtracker_main.log"
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 if __package__ in (None, ""):
     import sys
@@ -56,9 +72,10 @@ def get_firestore_client():
 
 def push_live_data(payload):
     try:
-        requests.put(f"{FIREBASE_URL}/live_data.json", json=payload, timeout=30)
-    except:
-        pass  # Silently skip failed writes
+        response = requests.put(f"{FIREBASE_URL}/live_data.json", json=payload, timeout=30)
+        logger.debug(f"Pushed live_data: score={payload.get('score')}, sessionId={payload.get('activeSessionId')}, status={response.status_code}")
+    except Exception as e:
+        logger.warning(f"Failed to push live_data: {e}")
 
 
 def read_hailo_status():
@@ -82,14 +99,15 @@ def start_hailo_process():
     hailo_example = os.path.join(HAILO_EXAMPLES_DIR, "basic_pipelines", "pose_estimation.py")
 
     if not os.path.exists(setup_env):
-        print(f"Hailo setup_env.sh not found at {setup_env}")
+        logger.error(f"Hailo setup_env.sh not found at {setup_env}")
         return False
 
     if not os.path.exists(hailo_example):
-        print(f"Hailo example not found at {hailo_example}")
+        logger.error(f"Hailo example not found at {hailo_example}")
         return False
 
     command = f"cd {shlex.quote(HAILO_EXAMPLES_DIR)} && source setup_env.sh && python basic_pipelines/pose_estimation.py --input rpi --use-frame"
+    logger.info(f"Starting Hailo pipeline with command: {command}")
 
     try:
         hailo_log_handle = open(HAILO_LOG_FILE, "a", encoding="utf-8")
@@ -100,9 +118,10 @@ def start_hailo_process():
             stdout=hailo_log_handle,
             stderr=hailo_log_handle,
         )
+        logger.info(f"Hailo process started with PID {hailo_process.pid}")
         return True
     except Exception as error:
-        print(f"Failed to start Hailo process: {error}")
+        logger.error(f"Failed to start Hailo process: {error}\n{traceback.format_exc()}")
         hailo_process = None
         if hailo_log_handle:
             try:
@@ -196,7 +215,11 @@ def main_loop():
     last_frame_score = 100
     last_hailo_update_at = None
     
-    print("Hardware Booted. Connecting to Firebase...")
+    logger.info("=" * 70)
+    logger.info("Hardware Booted. Connecting to Firebase...")
+    logger.info(f"Firebase URL: {FIREBASE_URL}")
+    logger.info(f"Log file: {LOG_FILE}")
+    logger.info("=" * 70)
 
     try:
         while True:
@@ -205,10 +228,14 @@ def main_loop():
                 state_resp = requests.get(f"{FIREBASE_URL}/system_state.json", timeout=30)
                 state = state_resp.json() or {}
                 requested_session_id = state.get('activeSessionId')
+                camera_command = state.get('camera_command')
+                
+                logger.debug(f"Polled system_state: camera_command={camera_command}, activeSessionId={requested_session_id}")
                 
                 # If Website says "ON", we do the monitoring
-                if state.get('camera_command') == "ON":
+                if camera_command == "ON":
                     if requested_session_id and requested_session_id != active_session_id:
+                        logger.info(f"New session detected: {requested_session_id}")
                         active_session_id = requested_session_id
                         camera_started_for_session = False
                         using_hailo_pipeline = False
@@ -221,16 +248,19 @@ def main_loop():
                         last_hailo_update_at = None
 
                     if not camera_started_for_session:
+                        logger.info("Starting camera pipeline...")
                         using_hailo_pipeline = start_hailo_process()
                         if not using_hailo_pipeline:
+                            logger.info("Hailo pipeline unavailable; starting Picamera2...")
                             camera_started_for_session = cam.start()
+                            logger.info(f"Picamera2 started: {camera_started_for_session}")
                         else:
                             camera_started_for_session = True
-                            print("Hailo pipeline started; waiting for live camera frames...")
+                            logger.info("Hailo pipeline started; waiting for live camera frames...")
 
                     if using_hailo_pipeline:
                         if hailo_process and hailo_process.poll() is not None:
-                            print(f"Hailo pipeline exited with code {hailo_process.returncode}; falling back to Picamera2")
+                            logger.warning(f"Hailo pipeline exited with code {hailo_process.returncode}; falling back to Picamera2")
                             stop_hailo_process()
                             using_hailo_pipeline = False
                             camera_started_for_session = cam.start()
@@ -311,14 +341,17 @@ def main_loop():
                         last_hailo_update_at = None
                     
             except Exception as e:
-                print(f"Network Error: {e}")
+                logger.error(f"Network/Firebase Error: {e}\n{traceback.format_exc()}")
 
             time.sleep(1)
             
     except KeyboardInterrupt:
-        print('Shutting down...')
+        logger.info('Shutting down gracefully...')
         if camera_started_for_session:
             cam.stop()
+        stop_hailo_process()
+        logger.info('Shutdown complete.')
+
 
 if __name__ == '__main__':
     main_loop()

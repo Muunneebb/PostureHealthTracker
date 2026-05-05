@@ -1,0 +1,25 @@
+[Unit]
+Description=PostureHealthTracker Hardware Monitoring Service
+Documentation=https://github.com/Muunneebb/PostureHealthTracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Documents/PostureHealthTracker/PostureHealthTracker
+ExecStart=/usr/bin/python3 hardware/src/main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=posture-hw
+Environment="PYTHONUNBUFFERED=1"
+
+# Security settings (optional but recommended)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
