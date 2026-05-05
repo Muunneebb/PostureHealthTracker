@@ -117,7 +117,7 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 
     def send_index(self):
         """Serve a simple HTML test page."""
-        html = b"""
+        html = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -134,19 +134,19 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 <body>
     <div class="container">
         <h1>PostureHealthTracker - Live Camera Stream</h1>
-        <div class="status">✓ MJPEG Server running on :8000</div>
+        <div class="status">Running MJPEG Server on :8000</div>
         <h2>Live Stream</h2>
         <img src="/stream" alt="Live camera stream" style="max-height: 600px;" />
         <h2>Integration</h2>
         <p>Use this URL in your HTML to embed the stream:</p>
         <code>&lt;img src="http://localhost:8000/stream" /&gt;</code>
-        <p>Or from network: <code>http://&lt;pi-ip&gt;:8000/stream</code></p>
+        <p>Or from network: <code>http://[pi-ip]:8000/stream</code></p>
     </div>
 </body>
 </html>
-"""
+""".encode('utf-8')
         self.send_response(200)
-        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(html)))
         self.end_headers()
         self.wfile.write(html)
