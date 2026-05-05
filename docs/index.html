@@ -85,6 +85,9 @@ body {
         grid-template-columns: 1fr 360px; 
     }
 }
+.camera-stage {
+    position: relative;
+}
 .camera-frame {
     width: 100%;
     height: auto;
@@ -92,13 +95,21 @@ body {
     aspect-ratio: 4 / 3;
     border-radius: 12px;
     border: 1px solid #c3d0e6;
-    background: #eef6ff;
+    background: linear-gradient(135deg, #0f1d33 0%, #162a4a 100%);
     object-fit: contain;
     display: block;
     margin: 0 auto;
     box-shadow: 0 8px 24px rgba(20,40,80,0.06);
 }
 .camera-frame.enlarged { max-height: 900px; }
+.camera-frame.loading {
+    opacity: 0.92;
+    filter: saturate(0.9);
+}
+.camera-frame.error {
+    border-color: #be3f3f;
+    background: #fff5f5;
+}
 .camera-meta { 
     display: grid; 
     gap: 0.7rem; 
@@ -106,6 +117,12 @@ body {
         grid-template-columns: auto 1fr;
         align-items: start;
     }
+}
+.camera-status-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
 }
 .camera-chip {
     display: inline-flex;
@@ -121,6 +138,27 @@ body {
 }
 .camera-steps { margin: 0; padding-left: 1.1rem; color: #3f5272; line-height: 1.55; }
 .camera-steps li { margin-bottom: 0.35rem; }
+.camera-hint {
+    margin: 0;
+    color: #5a6d8e;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+.camera-open-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    border: 1px solid #c3d0e6;
+    background: #ffffff;
+    color: #24426f;
+    text-decoration: none;
+    font-weight: 600;
+}
+.camera-open-link:hover {
+    background: #eef6ff;
+}
 
 .status-row { display: flex; align-items: center; gap: 0.7rem; color: #314b75; font-size: 1.3rem; font-weight: 600; margin-bottom: 0.25rem; }
 .status-dot { width: 14px; height: 14px; border-radius: 999px; background: #a5afc4; display: inline-block; }
@@ -240,10 +278,15 @@ body {
             <h3 class="panel-title">Live Camera View</h3>
         </div>
         <div class="panel-body camera-panel">
-            <img id="uiCameraFrame" class="camera-frame" alt="Live camera preview" />
+            <div class="camera-stage">
+                <img id="uiCameraFrame" class="camera-frame" alt="Live camera preview" loading="eager" decoding="async" />
+            </div>
             <div class="camera-meta">
-                <div class="camera-chip" id="uiCameraChip">Camera idle</div>
-                <p class="status-subtext" id="uiCameraStatus" style="margin: 0;">Start monitoring to activate the Hailo camera feed.</p>
+                <div class="camera-status-line">
+                    <div class="camera-chip" id="uiCameraChip">Camera idle</div>
+                    <a class="camera-open-link" id="uiOpenStreamLink" href="http://localhost:8000/stream" target="_blank" rel="noreferrer noopener">Open stream</a>
+                </div>
+                <p class="camera-hint" id="uiCameraStatus">Start monitoring to activate the Hailo camera feed.</p>
                 <ul class="camera-steps" id="uiCameraMetrics">
                     <li>Session score will appear here.</li>
                     <li>Pose metrics will update live during the session.</li>
@@ -327,6 +370,8 @@ let currentUser = null;
 let currentSessionStartTime = localStorage.getItem('sessionStartTime') ? new Date(localStorage.getItem('sessionStartTime')) : null;
 let currentSessionId = localStorage.getItem('activeSessionId') || null;
 let latestLiveScore = 100;
+let currentCameraStreamUrl = '';
+let currentCameraState = 'idle';
 
 const cameraPlaceholder = 'data:image/svg+xml;base64,' + btoa(`
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
@@ -343,30 +388,104 @@ const cameraPlaceholder = 'data:image/svg+xml;base64,' + btoa(`
     <text x="320" y="250" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#5a6d8e">Start monitoring to begin tracking</text>
 </svg>`);
 
+function resolveCameraStreamUrl() {
+    const override = localStorage.getItem('cameraStreamUrl') || '';
+    if (override) {
+        return override;
+    }
+
+    if (window.POSTURE_STREAM_URL) {
+        return window.POSTURE_STREAM_URL;
+    }
+
+    if (window.location.protocol === 'file:') {
+        return 'http://localhost:8000/stream';
+    }
+
+    const host = window.location.hostname;
+    if (!host) {
+        return 'http://localhost:8000/stream';
+    }
+
+    return `${window.location.protocol}//${host}:8000/stream`;
+}
+
+function setCameraFrameState(state, message) {
+    const frame = document.getElementById('uiCameraFrame');
+    const chip = document.getElementById('uiCameraChip');
+    const status = document.getElementById('uiCameraStatus');
+
+    currentCameraState = state;
+    frame.classList.toggle('loading', state === 'loading');
+    frame.classList.toggle('error', state === 'error');
+
+    if (state === 'live') {
+        chip.textContent = 'Camera active';
+        chip.style.background = '#e8f6ec';
+        chip.style.color = '#2f8f46';
+    } else if (state === 'loading') {
+        chip.textContent = 'Connecting camera...';
+        chip.style.background = '#eef2f7';
+        chip.style.color = '#5a6d8e';
+    } else if (state === 'error') {
+        chip.textContent = 'Stream unavailable';
+        chip.style.background = '#fdecec';
+        chip.style.color = '#be3f3f';
+    } else {
+        chip.textContent = 'Camera idle';
+        chip.style.background = '#eef2f7';
+        chip.style.color = '#5a6d8e';
+    }
+
+    if (message) {
+        status.textContent = message;
+    }
+}
+
+function connectCameraStream() {
+    const frame = document.getElementById('uiCameraFrame');
+    const streamUrl = resolveCameraStreamUrl();
+
+    document.getElementById('uiOpenStreamLink').href = streamUrl;
+
+    if (currentCameraStreamUrl === streamUrl && frame.src && currentCameraState !== 'error') {
+        return;
+    }
+
+    currentCameraStreamUrl = streamUrl;
+    frame.onload = () => setCameraFrameState('live', 'Live camera feed connected.');
+    frame.onerror = () => setCameraFrameState('error', `Camera stream could not load from ${streamUrl}. Check the MJPEG service on port 8000.`);
+
+    setCameraFrameState('loading', `Connecting to the live camera stream at ${streamUrl}...`);
+    frame.src = streamUrl;
+}
+
+function disconnectCameraStream() {
+    const frame = document.getElementById('uiCameraFrame');
+    frame.onload = null;
+    frame.onerror = null;
+    currentCameraStreamUrl = '';
+    frame.src = cameraPlaceholder;
+    setCameraFrameState('idle', 'Start monitoring to activate the Hailo camera feed.');
+}
+
 function updateCameraPanel(data) {
         const frame = document.getElementById('uiCameraFrame');
-        const chip = document.getElementById('uiCameraChip');
-        const status = document.getElementById('uiCameraStatus');
         const metrics = document.getElementById('uiCameraMetrics');
 
         const cameraActive = Boolean(data && data.cameraActive);
         
         if (cameraActive) {
-            // Use local MJPEG stream for live, lag-free video (100x faster than Firebase base64)
-            // The MJPEG server on :8000 streams binary JPEGs directly from the Pi
-            frame.src = 'http://localhost:8000/stream';
+            // Keep the MJPEG img source stable so the browser does not reconnect on every Firebase update.
+            connectCameraStream();
             frame.classList.add('enlarged');
         } else {
-            frame.src = cameraPlaceholder;
+            disconnectCameraStream();
             frame.classList.remove('enlarged');
         }
 
-        chip.textContent = cameraActive ? 'Camera active' : 'Camera idle';
-        chip.style.background = cameraActive ? '#e8f6ec' : '#eef2f7';
-        chip.style.color = cameraActive ? '#2f8f46' : '#5a6d8e';
-
         if (!data || !cameraActive) {
-                status.textContent = 'Start monitoring to activate the Hailo camera feed.';
+                setCameraFrameState('idle', 'Start monitoring to activate the Hailo camera feed.');
                 metrics.innerHTML = '<li>Session score will appear here.</li><li>Pose metrics will update live during the session.</li>';
                 return;
         }
@@ -377,7 +496,7 @@ function updateCameraPanel(data) {
         const postureStatus = data.postureStatus || 'Unknown';
         const postureReason = data.postureReason || '';
 
-        status.textContent = `Live frame score ${frameScore}% and session score ${sessionScore}% | Posture: ${postureStatus}`;
+        setCameraFrameState('live', `Live frame score ${frameScore}% and session score ${sessionScore}% | Posture: ${postureStatus}`);
         
         let metricsHtml = `
                 <li>Frame score: ${frameScore}%</li>

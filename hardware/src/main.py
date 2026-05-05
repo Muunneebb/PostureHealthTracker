@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import logging
 import traceback
+import signal
 from datetime import datetime
 from importlib import import_module
 import requests # <-- ADDED: To talk directly to the cloud
@@ -43,6 +44,26 @@ HAILO_EXAMPLES_DIR = os.environ.get("HAILO_EXAMPLES_DIR", os.path.expanduser("~/
 firestore_client = None
 hailo_process = None
 hailo_log_handle = None
+
+
+def cleanup_stale_hailo_processes():
+    stale_patterns = [
+        "basic_pipelines/pose_estimation.py --input rpi --use-frame",
+        "Hailo Pose Estimation App",
+    ]
+
+    for pattern in stale_patterns:
+        try:
+            subprocess.run(
+                ["pkill", "-f", pattern],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except Exception as error:
+            logger.debug(f"No stale process cleanup for pattern '{pattern}': {error}")
+
+    time.sleep(0.5)
 
 
 def get_firestore_client():
@@ -95,6 +116,8 @@ def start_hailo_process():
     if hailo_process and hailo_process.poll() is None:
         return True
 
+    cleanup_stale_hailo_processes()
+
     setup_env = os.path.join(HAILO_EXAMPLES_DIR, "setup_env.sh")
     hailo_example = os.path.join(HAILO_EXAMPLES_DIR, "basic_pipelines", "pose_estimation.py")
 
@@ -117,6 +140,7 @@ def start_hailo_process():
             ["bash", "-lc", command],
             stdout=hailo_log_handle,
             stderr=hailo_log_handle,
+            start_new_session=True,
         )
         logger.info(f"Hailo process started with PID {hailo_process.pid}")
         return True
@@ -136,18 +160,25 @@ def stop_hailo_process():
     global hailo_process, hailo_log_handle
 
     if not hailo_process:
+        cleanup_stale_hailo_processes()
         return
 
     try:
         if hailo_process.poll() is None:
             logger.info(f"Terminating Hailo process {hailo_process.pid}...")
-            hailo_process.terminate()
+            try:
+                os.killpg(os.getpgid(hailo_process.pid), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
             try:
                 hailo_process.wait(timeout=3)
                 logger.info(f"Hailo process terminated gracefully")
             except subprocess.TimeoutExpired:
                 logger.warning(f"Hailo process did not terminate, killing...")
-                hailo_process.kill()
+                try:
+                    os.killpg(os.getpgid(hailo_process.pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 hailo_process.wait(timeout=2)
                 logger.info(f"Hailo process killed")
             # Give the OS time to clean up resources (window, etc)
@@ -156,6 +187,7 @@ def stop_hailo_process():
         logger.error(f"Error stopping Hailo process: {e}")
     finally:
         hailo_process = None
+        cleanup_stale_hailo_processes()
         if hailo_log_handle:
             try:
                 hailo_log_handle.close()
