@@ -349,16 +349,18 @@ function updateCameraPanel(data) {
         const status = document.getElementById('uiCameraStatus');
         const metrics = document.getElementById('uiCameraMetrics');
 
-        if (data && data.cameraFrame) {
-            frame.src = data.cameraFrame;
-            // make the frame visually larger when active
+        const cameraActive = Boolean(data && data.cameraActive);
+        
+        if (cameraActive) {
+            // Use local MJPEG stream for live, lag-free video (100x faster than Firebase base64)
+            // The MJPEG server on :8000 streams binary JPEGs directly from the Pi
+            frame.src = 'http://localhost:8000/stream';
             frame.classList.add('enlarged');
         } else {
             frame.src = cameraPlaceholder;
             frame.classList.remove('enlarged');
         }
 
-        const cameraActive = Boolean(data && data.cameraActive);
         chip.textContent = cameraActive ? 'Camera active' : 'Camera idle';
         chip.style.background = cameraActive ? '#e8f6ec' : '#eef2f7';
         chip.style.color = cameraActive ? '#2f8f46' : '#5a6d8e';

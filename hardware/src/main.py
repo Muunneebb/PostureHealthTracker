@@ -326,7 +326,8 @@ def main_loop():
                         "cameraMetrics": last_camera_metrics,
                         "postureStatus": posture_status,
                         "postureReason": posture_reason,
-                        "cameraFrame": last_preview_data_url,
+                        # NOTE: cameraFrame removed — dashboard now uses local MJPEG stream (http://localhost:8000/stream)
+                        # This eliminates base64 overhead and provides smooth, lag-free video
                         "updatedAt": int(time.time())
                     }
                     push_live_data(live_payload)
