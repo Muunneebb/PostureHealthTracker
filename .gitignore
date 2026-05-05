@@ -16,7 +16,35 @@ env/
 # =========================
 # Logs
 # =========================
+#. Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+
+# VS Code
+.vscode/
+
+# Virtual environments
+venv/
+.venv/
+
+# macOS
+.DS_Store
+
+# Logs
 *.log
+
+# dotenv
+.env
+
+# Node
+node_modules/
 
 # =========================
 # Credentials / Secrets (IMPORTANT)
